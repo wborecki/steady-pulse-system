@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useServices } from '@/hooks/useServices';
 import { useAlerts, useAcknowledgeAlert } from '@/hooks/useAlerts';
-import { useTriggerHealthCheck } from '@/hooks/useHealthChecks';
+import { useTriggerHealthCheck, useAllRecentHealthChecks } from '@/hooks/useHealthChecks';
 import { StatsCard } from '@/components/monitoring/StatsCard';
 import { ServiceRow } from '@/components/monitoring/ServiceRow';
 import { AlertItem } from '@/components/monitoring/AlertItem';
@@ -21,6 +21,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { data: services = [], isLoading } = useServices();
   const { data: alerts = [] } = useAlerts();
+  const { data: recentChecks = [] } = useAllRecentHealthChecks();
   const acknowledgeAlert = useAcknowledgeAlert();
   const triggerCheck = useTriggerHealthCheck();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -34,6 +35,37 @@ const Index = () => {
       : '0';
     return { online, offline, warning, total: services.length, avgUptime };
   }, [services]);
+
+  const responseTimeChartData = useMemo(() => {
+    // Aggregate average response time by hour
+    const byHour = new Map<string, { total: number; count: number }>();
+    recentChecks.forEach(h => {
+      const time = new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const entry = byHour.get(time) || { total: 0, count: 0 };
+      entry.total += (h.response_time ?? 0);
+      entry.count++;
+      byHour.set(time, entry);
+    });
+    return Array.from(byHour.entries()).map(([time, { total, count }]) => ({
+      time,
+      value: Math.round(total / count),
+    }));
+  }, [recentChecks]);
+
+  const availabilityChartData = useMemo(() => {
+    const byHour = new Map<string, { online: number; total: number }>();
+    recentChecks.forEach(h => {
+      const time = new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const entry = byHour.get(time) || { online: 0, total: 0 };
+      if (h.status === 'online') entry.online++;
+      entry.total++;
+      byHour.set(time, entry);
+    });
+    return Array.from(byHour.entries()).map(([time, { online, total }]) => ({
+      time,
+      value: Math.round((online / total) * 100),
+    }));
+  }, [recentChecks]);
 
   const filteredServices = useMemo(() => {
     if (selectedCategory === 'all') return services;
@@ -90,10 +122,10 @@ const Index = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="glass-card rounded-lg p-4">
-          <MetricsChart title="Uso de CPU (%)" dataKey="cpu" color="hsl(175, 80%, 50%)" />
+          <MetricsChart title="Latência Média (ms)" data={responseTimeChartData} color="hsl(175, 80%, 50%)" unit="ms" />
         </div>
         <div className="glass-card rounded-lg p-4">
-          <MetricsChart title="Uso de Memória (%)" dataKey="memory" color="hsl(145, 65%, 45%)" />
+          <MetricsChart title="Disponibilidade (%)" data={availabilityChartData} color="hsl(145, 65%, 45%)" unit="%" />
         </div>
       </div>
 
