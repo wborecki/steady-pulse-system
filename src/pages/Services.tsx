@@ -5,7 +5,7 @@ import { ServiceRow } from '@/components/monitoring/ServiceRow';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, RefreshCw } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -50,17 +50,17 @@ const Services = () => {
             <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
             Verificar Todos
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
+          <Sheet open={dialogOpen} onOpenChange={setDialogOpen}>
+            <SheetTrigger asChild>
               <Button className="gap-2"><Plus className="h-4 w-4" /> Adicionar Serviço</Button>
-            </DialogTrigger>
-            <DialogContent className="bg-card border-border max-w-lg">
-              <DialogHeader>
-                <DialogTitle className="font-heading">Novo Serviço</DialogTitle>
-              </DialogHeader>
+            </SheetTrigger>
+            <SheetContent className="bg-card border-border w-full sm:max-w-lg overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle className="font-heading">Novo Serviço</SheetTitle>
+              </SheetHeader>
               <AddServiceForm onSuccess={() => setDialogOpen(false)} />
-            </DialogContent>
-          </Dialog>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 
