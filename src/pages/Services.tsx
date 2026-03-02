@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react';
-import { useServices, useCreateService } from '@/hooks/useServices';
+import { useServices } from '@/hooks/useServices';
 import { useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { ServiceRow } from '@/components/monitoring/ServiceRow';
+import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 const categoryLabels: Record<string, string> = {
@@ -23,13 +23,11 @@ const statusLabels: Record<string, string> = {
 const Services = () => {
   const navigate = useNavigate();
   const { data: services = [], isLoading } = useServices();
-  const createService = useCreateService();
   const triggerCheck = useTriggerHealthCheck();
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [checkType, setCheckType] = useState('http');
 
   const filtered = useMemo(() => {
     return services.filter(s => {
@@ -39,63 +37,6 @@ const Services = () => {
       return matchSearch && matchCat && matchStat;
     });
   }, [services, search, filterCategory, filterStatus]);
-
-  const handleAddService = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const type = form.get('check_type') as string || 'http';
-    
-    let checkConfig: Record<string, unknown> = {};
-    let url: string | null = null;
-
-    switch (type) {
-      case 'tcp':
-        checkConfig = { host: form.get('tcp_host') as string, port: Number(form.get('tcp_port')) };
-        break;
-      case 'postgresql':
-        checkConfig = { connection_string: form.get('pg_connection_string') as string };
-        break;
-      case 'mongodb':
-        checkConfig = {
-          connection_string: form.get('mongo_connection_string') as string,
-          database: (form.get('mongo_database') as string) || undefined,
-        };
-        break;
-      case 'cloudwatch':
-        checkConfig = {
-          metric_type: form.get('cw_metric_type') as string || 'EC2',
-          instance_id: form.get('cw_instance_id') as string,
-          region: (form.get('cw_region') as string) || undefined,
-        };
-        break;
-      case 's3':
-        checkConfig = {
-          bucket_name: form.get('s3_bucket') as string,
-          region: (form.get('s3_region') as string) || undefined,
-        };
-        break;
-      case 'http':
-        url = (form.get('url') as string) || null;
-        break;
-    }
-
-    try {
-      await createService.mutateAsync({
-        name: form.get('name') as string,
-        category: form.get('category') as string,
-        url,
-        description: (form.get('description') as string) || '',
-        check_type: type,
-        check_config: checkConfig,
-        check_interval_seconds: Number(form.get('interval') || 60),
-      } as any);
-      toast.success('Serviço adicionado!');
-      setDialogOpen(false);
-      setCheckType('http');
-    } catch {
-      toast.error('Erro ao adicionar serviço');
-    }
-  };
 
   return (
     <div className="p-6 space-y-6 grid-bg min-h-screen">
@@ -109,170 +50,15 @@ const Services = () => {
             <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
             Verificar Todos
           </Button>
-          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setCheckType('http'); }}>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2"><Plus className="h-4 w-4" /> Adicionar Serviço</Button>
             </DialogTrigger>
-            <DialogContent className="bg-card border-border">
+            <DialogContent className="bg-card border-border max-w-lg">
               <DialogHeader>
                 <DialogTitle className="font-heading">Novo Serviço</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleAddService} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Nome do Serviço</Label>
-                  <Input name="name" required placeholder="Ex: EC2 - Produção" className="bg-secondary border-border" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Categoria</Label>
-                    <Select name="category" defaultValue="server">
-                      <SelectTrigger className="bg-secondary border-border">
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(categoryLabels).map(([key, label]) => (
-                          <SelectItem key={key} value={key}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tipo de Check</Label>
-                    <Select name="check_type" defaultValue="http" value={checkType} onValueChange={setCheckType}>
-                      <SelectTrigger className="bg-secondary border-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="http">HTTP / Site</SelectItem>
-                        <SelectItem value="tcp">TCP</SelectItem>
-                        <SelectItem value="sql_query">SQL Server (Azure)</SelectItem>
-                        <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                        <SelectItem value="mongodb">MongoDB</SelectItem>
-                        <SelectItem value="cloudwatch">AWS CloudWatch</SelectItem>
-                        <SelectItem value="s3">AWS S3</SelectItem>
-                        <SelectItem value="process">Processo</SelectItem>
-                        <SelectItem value="custom">Customizado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {checkType === 'http' && (
-                  <div className="space-y-2">
-                    <Label>URL / Endpoint</Label>
-                    <Input name="url" required placeholder="https://api.empresa.com" className="bg-secondary border-border" />
-                  </div>
-                )}
-
-                {checkType === 'tcp' && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 space-y-2">
-                      <Label>Host</Label>
-                      <Input name="tcp_host" required placeholder="db.empresa.com" className="bg-secondary border-border" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Porta</Label>
-                      <Input name="tcp_port" type="number" required placeholder="5432" className="bg-secondary border-border" />
-                    </div>
-                  </div>
-                )}
-
-                {checkType === 'sql_query' && (
-                  <div className="rounded-md border border-border bg-secondary/50 p-3 text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">📊 Azure SQL Server</p>
-                    <p>Usa as credenciais configuradas no backend. Coleta CPU, Memória, Conexões e Top Waits via DMVs.</p>
-                  </div>
-                )}
-
-                {checkType === 'postgresql' && (
-                  <div className="space-y-2">
-                    <Label>Connection String</Label>
-                    <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" />
-                    <p className="text-xs text-muted-foreground">Coleta: conexões, cache hit ratio, tamanho do banco, replication lag, transações.</p>
-                  </div>
-                )}
-
-                {checkType === 'mongodb' && (
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Label>Connection String</Label>
-                      <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Database (opcional)</Label>
-                      <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Coleta: conexões, memória, opcounters, tamanho do banco, operações ativas.</p>
-                  </div>
-                )}
-
-                {checkType === 'cloudwatch' && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Tipo de Recurso</Label>
-                        <Select name="cw_metric_type" defaultValue="EC2">
-                          <SelectTrigger className="bg-secondary border-border">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="EC2">EC2</SelectItem>
-                            <SelectItem value="RDS">RDS</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Região AWS</Label>
-                        <Input name="cw_region" placeholder="us-east-1" className="bg-secondary border-border" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Instance ID / DB Identifier</Label>
-                      <Input name="cw_instance_id" required placeholder="i-0abc123def ou mydb-instance" className="bg-secondary border-border font-mono text-xs" />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Usa credenciais AWS configuradas. Coleta CPU, Network, StatusCheck (EC2) ou CPU, Memória, Conexões, Latência (RDS).</p>
-                  </div>
-                )}
-
-                {checkType === 's3' && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Nome do Bucket</Label>
-                        <Input name="s3_bucket" required placeholder="meu-bucket-prod" className="bg-secondary border-border" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Região AWS</Label>
-                        <Input name="s3_region" placeholder="us-east-1" className="bg-secondary border-border" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Usa credenciais AWS configuradas. Verifica acessibilidade e existência do bucket.</p>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label>Intervalo de verificação</Label>
-                  <Select name="interval" defaultValue="60">
-                    <SelectTrigger className="bg-secondary border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="30">30 segundos</SelectItem>
-                      <SelectItem value="60">1 minuto</SelectItem>
-                      <SelectItem value="300">5 minutos</SelectItem>
-                      <SelectItem value="600">10 minutos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Descrição</Label>
-                  <Input name="description" placeholder="Descrição do serviço" className="bg-secondary border-border" />
-                </div>
-                <Button type="submit" className="w-full" disabled={createService.isPending}>
-                  {createService.isPending ? 'Adicionando...' : 'Adicionar'}
-                </Button>
-              </form>
+              <AddServiceForm onSuccess={() => setDialogOpen(false)} />
             </DialogContent>
           </Dialog>
         </div>
