@@ -6,6 +6,21 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string, method = "GET", body?: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const opts: RequestInit = { signal: controller.signal, headers, method };
+  if (body) opts.body = body;
+
+  const res = await fetch(`${agentUrl}${endpoint}`, opts);
+  clearTimeout(timeout);
+  if (!res.ok) throw new Error(`Agent returned ${res.status} for ${endpoint}`);
+  return res.json();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -25,30 +40,18 @@ Deno.serve(async (req) => {
 
     const services = (config.services as string[]) || [];
     const endpoint = config.endpoint as string || "/systemctl";
-
     const token = config.token as string || "";
 
     const start = Date.now();
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // Fetch systemctl data and server metrics in parallel
+    const [agentData, serverMetrics] = await Promise.all([
+      fetchAgentEndpoint(agentUrl, endpoint, token, "POST", JSON.stringify({ services })),
+      fetchAgentEndpoint(agentUrl, "/metrics", token).catch(() => null),
+    ]);
 
-    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
-
-    const res = await fetch(`${agentUrl}${endpoint}`, {
-      signal: controller.signal,
-      headers: fetchHeaders,
-      method: "POST",
-      body: JSON.stringify({ services }),
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) throw new Error(`Agent returned ${res.status}`);
-    const agentData = await res.json();
     const responseTime = Date.now() - start;
 
-    // Expected agent response: { units: [{ name, active_state, sub_state, pid, memory_bytes, uptime_seconds }] }
     const units = agentData.units || agentData.services || [];
     const activeCount = units.filter((u: any) => u.active_state === "active").length;
     const failedCount = units.filter((u: any) => u.active_state === "failed").length;
@@ -58,7 +61,7 @@ Deno.serve(async (req) => {
     if (failedCount > 0) status = "offline";
     else if (inactiveCount > 0) status = "warning";
 
-    const systemctlDetails = {
+    const systemctlDetails: Record<string, unknown> = {
       units: units.map((u: any) => ({
         name: u.name || u.unit,
         active_state: u.active_state,
@@ -67,25 +70,37 @@ Deno.serve(async (req) => {
         memory_mb: u.memory_bytes ? Math.round(u.memory_bytes / 1024 / 1024) : (u.memory_mb ?? null),
         uptime_seconds: u.uptime_seconds ?? null,
       })),
-      summary: {
-        total: units.length,
-        active: activeCount,
-        failed: failedCount,
-        inactive: inactiveCount,
-      },
+      summary: { total: units.length, active: activeCount, failed: failedCount, inactive: inactiveCount },
       agent_url: agentUrl,
     };
+
+    // Attach server metrics if available
+    if (serverMetrics) {
+      systemctlDetails.server = {
+        hostname: serverMetrics.hostname,
+        cpu_percent: serverMetrics.cpu_percent,
+        cpu_cores: serverMetrics.cpu_cores,
+        memory: serverMetrics.memory,
+        disks: serverMetrics.disks,
+        load_average: serverMetrics.load_average,
+      };
+    }
 
     if (serviceId) {
       const existingConfig = { ...config };
       existingConfig._systemctl_details = systemctlDetails;
 
+      const cpuVal = serverMetrics?.cpu_percent ?? activeCount;
+      const memVal = serverMetrics?.memory?.percent ?? failedCount;
+      const diskVal = serverMetrics?.disks?.find((d: any) => d.mount === "/")?.percent ?? serverMetrics?.disks?.[0]?.percent ?? inactiveCount;
+
       await supabase.from("health_checks").insert({
         service_id: serviceId,
         status,
         response_time: responseTime,
-        cpu: activeCount,
-        memory: failedCount,
+        cpu: Math.round(cpuVal * 100) / 100,
+        memory: Math.round(memVal * 100) / 100,
+        disk: Math.round(diskVal * 100) / 100,
         error_message: failedCount > 0 ? `${failedCount} service(s) failed` : null,
       });
 
@@ -94,9 +109,9 @@ Deno.serve(async (req) => {
       await supabase.from("services").update({
         status,
         response_time: responseTime,
-        cpu: activeCount,
-        memory: failedCount,
-        disk: inactiveCount,
+        cpu: Math.round(cpuVal * 100) / 100,
+        memory: Math.round(memVal * 100) / 100,
+        disk: Math.round(diskVal * 100) / 100,
         last_check: new Date().toISOString(),
         uptime: uptimeData ?? 0,
         check_config: existingConfig,

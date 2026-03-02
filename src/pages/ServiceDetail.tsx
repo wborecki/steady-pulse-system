@@ -5,7 +5,7 @@ import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck }
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -28,6 +28,113 @@ function MetricCard({ label, value, unit, color }: { label: string; value: numbe
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ServerMetricsPanel({ server }: { server: any }) {
+  const mem = server.memory || {};
+  const load = server.load_average || {};
+  const disks = server.disks || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Server className="h-4 w-4 text-primary" />
+        <h3 className="font-heading font-semibold text-sm">Métricas do Servidor {server.hostname ? `(${server.hostname})` : ''}</h3>
+      </div>
+
+      {/* CPU, Memory, Load Average */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="glass-card">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
+              <Cpu className="h-3 w-3 inline mr-1" />CPU
+            </p>
+            <p className="text-2xl font-heading font-bold text-primary">{server.cpu_percent?.toFixed(1) ?? 0}<span className="text-sm">%</span></p>
+            <p className="text-[10px] font-mono text-muted-foreground">{server.cpu_cores ?? '?'} cores</p>
+            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${(server.cpu_percent ?? 0) >= 85 ? 'bg-destructive' : (server.cpu_percent ?? 0) >= 70 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${Math.min(server.cpu_percent ?? 0, 100)}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
+              <MemoryStick className="h-3 w-3 inline mr-1" />RAM
+            </p>
+            <p className="text-2xl font-heading font-bold text-success">{mem.percent?.toFixed(1) ?? 0}<span className="text-sm">%</span></p>
+            <p className="text-[10px] font-mono text-muted-foreground">{mem.used_mb?.toFixed(0) ?? 0} / {mem.total_mb?.toFixed(0) ?? 0} MB</p>
+            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+              <div className={`h-full rounded-full ${(mem.percent ?? 0) >= 85 ? 'bg-destructive' : (mem.percent ?? 0) >= 70 ? 'bg-warning' : 'bg-success'}`} style={{ width: `${Math.min(mem.percent ?? 0, 100)}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Load Average</p>
+            <p className="text-2xl font-heading font-bold text-warning">{load.load_1?.toFixed(2) ?? '0.00'}</p>
+            <p className="text-[10px] font-mono text-muted-foreground">5m: {load.load_5?.toFixed(2) ?? '0.00'} · 15m: {load.load_15?.toFixed(2) ?? '0.00'}</p>
+          </CardContent>
+        </Card>
+        <Card className="glass-card">
+          <CardContent className="p-4 text-center">
+            <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
+              <HardDrive className="h-3 w-3 inline mr-1" />Disco /
+            </p>
+            {(() => {
+              const rootDisk = disks.find((d: any) => d.mount === '/') || disks[0];
+              if (!rootDisk) return <p className="text-2xl font-heading font-bold text-muted-foreground">N/A</p>;
+              return (
+                <>
+                  <p className="text-2xl font-heading font-bold text-foreground">{rootDisk.percent?.toFixed(1) ?? 0}<span className="text-sm">%</span></p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{rootDisk.used_gb?.toFixed(1) ?? 0} / {rootDisk.total_gb?.toFixed(1) ?? 0} GB</p>
+                  <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${(rootDisk.percent ?? 0) >= 85 ? 'bg-destructive' : (rootDisk.percent ?? 0) >= 70 ? 'bg-warning' : 'bg-foreground'}`} style={{ width: `${Math.min(rootDisk.percent ?? 0, 100)}%` }} />
+                  </div>
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* All Disks Table */}
+      {disks.length > 1 && (
+        <Card className="glass-card">
+          <CardContent className="p-4">
+            <h3 className="font-heading font-semibold text-sm mb-3">
+              <HardDrive className="h-4 w-4 inline mr-1" />Discos
+            </h3>
+            <table className="w-full text-sm font-mono">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground text-xs">
+                  <th className="p-2 text-left">Mount</th>
+                  <th className="p-2 text-right">Total</th>
+                  <th className="p-2 text-right">Usado</th>
+                  <th className="p-2 text-right">Livre</th>
+                  <th className="p-2 text-right">Uso %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disks.map((d: any, i: number) => (
+                  <tr key={i} className="border-b border-border/50">
+                    <td className="p-2 text-xs">{d.mount}</td>
+                    <td className="p-2 text-right text-xs">{d.total_gb?.toFixed(1)} GB</td>
+                    <td className="p-2 text-right text-xs">{d.used_gb?.toFixed(1)} GB</td>
+                    <td className="p-2 text-right text-xs">{d.available_gb?.toFixed(1)} GB</td>
+                    <td className="p-2 text-right">
+                      <span className={`text-xs px-2 py-0.5 rounded ${(d.percent ?? 0) >= 85 ? 'bg-destructive/20 text-destructive' : (d.percent ?? 0) >= 70 ? 'bg-warning/20 text-warning' : 'bg-success/20 text-success'}`}>
+                        {d.percent?.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -346,17 +453,17 @@ const ServiceDetail = () => {
           </>
         ) : checkType === 'systemctl' ? (
           <>
-            <MetricCard label="Ativos" value={Number(service.cpu)} unit="" color="text-success" />
-            <MetricCard label="Falhos" value={Number(service.memory)} unit="" color="text-destructive" />
-            <MetricCard label="Inativos" value={Number(service.disk)} unit="" color="text-warning" />
+            <MetricCard label="CPU Servidor" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Disco" value={Number(service.disk)} unit="%" color="text-warning" />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
           </>
         ) : checkType === 'container' ? (
           <>
-            <MetricCard label="CPU Avg" value={Number(service.cpu)} unit="%" color="text-primary" />
-            <MetricCard label="Mem Avg" value={Number(service.memory)} unit="%" color="text-success" />
-            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+            <MetricCard label="CPU Containers" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Mem Containers" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Disco Servidor" value={Number(service.disk)} unit="%" color="text-warning" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
           </>
         ) : (
           <>
@@ -951,6 +1058,7 @@ const ServiceDetail = () => {
         const details = (config as any)?._systemctl_details;
         if (!details) return null;
         const summary = details.summary || {};
+        const server = details.server;
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -959,6 +1067,10 @@ const ServiceDetail = () => {
               <MetricCard label="Falhos" value={summary.failed ?? 0} unit="" color="text-destructive" />
               <MetricCard label="Inativos" value={summary.inactive ?? 0} unit="" color="text-warning" />
             </div>
+
+            {/* Server Metrics Panel */}
+            {server && <ServerMetricsPanel server={server} />}
+
             {details.units?.length > 0 && (
               <Card className="glass-card">
                 <CardContent className="p-4">
@@ -1001,6 +1113,7 @@ const ServiceDetail = () => {
         const details = (config as any)?._container_details;
         if (!details) return null;
         const summary = details.summary || {};
+        const server = details.server;
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1009,6 +1122,10 @@ const ServiceDetail = () => {
               <MetricCard label="Unhealthy" value={summary.unhealthy ?? 0} unit="" color="text-destructive" />
               <MetricCard label="Total" value={summary.total ?? 0} unit="" color="text-foreground" />
             </div>
+
+            {/* Server Metrics Panel */}
+            {server && <ServerMetricsPanel server={server} />}
+
             {details.containers?.length > 0 && (
               <Card className="glass-card">
                 <CardContent className="p-4">
@@ -1022,6 +1139,7 @@ const ServiceDetail = () => {
                           <th className="p-2 text-left">Estado</th>
                           <th className="p-2 text-right">CPU %</th>
                           <th className="p-2 text-right">Mem %</th>
+                          <th className="p-2 text-right">Restarts</th>
                           <th className="p-2 text-right">Net I/O</th>
                         </tr>
                       </thead>
@@ -1037,6 +1155,7 @@ const ServiceDetail = () => {
                             </td>
                             <td className="p-2 text-right text-xs">{c.cpu_percent?.toFixed(1)}%</td>
                             <td className="p-2 text-right text-xs">{c.memory_percent?.toFixed(1)}%</td>
+                            <td className="p-2 text-right text-xs">{c.restart_count ?? 0}</td>
                             <td className="p-2 text-right text-xs">{c.network_in_mb?.toFixed(1) ?? '-'}/{c.network_out_mb?.toFixed(1) ?? '-'} MB</td>
                           </tr>
                         ))}

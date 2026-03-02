@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${agentUrl}${endpoint}`, { signal: controller.signal, headers });
+  clearTimeout(timeout);
+  if (!res.ok) throw new Error(`Agent returned ${res.status} for ${endpoint}`);
+  return res.json();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -24,28 +36,18 @@ Deno.serve(async (req) => {
     if (!agentUrl) throw new Error("agent_url not configured. Deploy the monitoring agent on your server.");
 
     const endpoint = config.endpoint as string || "/containers";
-
     const token = config.token as string || "";
 
     const start = Date.now();
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // Fetch container data and server metrics in parallel
+    const [agentData, serverMetrics] = await Promise.all([
+      fetchAgentEndpoint(agentUrl, endpoint, token),
+      fetchAgentEndpoint(agentUrl, "/metrics", token).catch(() => null),
+    ]);
 
-    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
-
-    const res = await fetch(`${agentUrl}${endpoint}`, {
-      signal: controller.signal,
-      headers: fetchHeaders,
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) throw new Error(`Agent returned ${res.status}`);
-    const agentData = await res.json();
     const responseTime = Date.now() - start;
 
-    // Expected: { containers: [{ name, image, status, state, cpu_percent, memory_percent, memory_mb, network_in_mb, network_out_mb, health }] }
     const containers = agentData.containers || [];
     const running = containers.filter((c: any) => c.state === "running").length;
     const stopped = containers.filter((c: any) => c.state === "exited" || c.state === "stopped").length;
@@ -62,7 +64,7 @@ Deno.serve(async (req) => {
     if (unhealthy > 0 || (running === 0 && containers.length > 0)) status = "offline";
     else if (stopped > 0) status = "warning";
 
-    const containerDetails = {
+    const containerDetails: Record<string, unknown> = {
       containers: containers.map((c: any) => ({
         name: c.name,
         image: c.image,
@@ -74,21 +76,32 @@ Deno.serve(async (req) => {
         memory_mb: c.memory_mb ?? null,
         network_in_mb: c.network_in_mb ?? null,
         network_out_mb: c.network_out_mb ?? null,
+        restart_count: c.restart_count ?? 0,
+        created: c.created ?? null,
       })),
-      summary: {
-        total: containers.length,
-        running,
-        stopped,
-        unhealthy,
-      },
+      summary: { total: containers.length, running, stopped, unhealthy },
       avg_cpu: Math.round(avgCpu * 100) / 100,
       avg_memory: Math.round(avgMem * 100) / 100,
       agent_url: agentUrl,
     };
 
+    // Attach server metrics if available
+    if (serverMetrics) {
+      containerDetails.server = {
+        hostname: serverMetrics.hostname,
+        cpu_percent: serverMetrics.cpu_percent,
+        cpu_cores: serverMetrics.cpu_cores,
+        memory: serverMetrics.memory,
+        disks: serverMetrics.disks,
+        load_average: serverMetrics.load_average,
+      };
+    }
+
     if (serviceId) {
       const existingConfig = { ...config };
       existingConfig._container_details = containerDetails;
+
+      const diskVal = serverMetrics?.disks?.find((d: any) => d.mount === "/")?.percent ?? serverMetrics?.disks?.[0]?.percent ?? 0;
 
       await supabase.from("health_checks").insert({
         service_id: serviceId,
@@ -96,6 +109,7 @@ Deno.serve(async (req) => {
         response_time: responseTime,
         cpu: Math.round(avgCpu * 100) / 100,
         memory: Math.round(avgMem * 100) / 100,
+        disk: Math.round(diskVal * 100) / 100,
         error_message: unhealthy > 0 ? `${unhealthy} unhealthy container(s)` : null,
       });
 
@@ -106,6 +120,7 @@ Deno.serve(async (req) => {
         response_time: responseTime,
         cpu: Math.round(avgCpu * 100) / 100,
         memory: Math.round(avgMem * 100) / 100,
+        disk: Math.round(diskVal * 100) / 100,
         last_check: new Date().toISOString(),
         uptime: uptimeData ?? 0,
         check_config: existingConfig,
