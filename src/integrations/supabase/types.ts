@@ -171,7 +171,16 @@ export type Database = {
     }
     Enums: {
       alert_type: "critical" | "warning" | "info"
-      check_type: "http" | "tcp" | "process" | "sql_query" | "custom"
+      check_type:
+        | "http"
+        | "tcp"
+        | "process"
+        | "sql_query"
+        | "custom"
+        | "postgresql"
+        | "mongodb"
+        | "cloudwatch"
+        | "s3"
       service_category:
         | "aws"
         | "database"
@@ -308,7 +317,17 @@ export const Constants = {
   public: {
     Enums: {
       alert_type: ["critical", "warning", "info"],
-      check_type: ["http", "tcp", "process", "sql_query", "custom"],
+      check_type: [
+        "http",
+        "tcp",
+        "process",
+        "sql_query",
+        "custom",
+        "postgresql",
+        "mongodb",
+        "cloudwatch",
+        "s3",
+      ],
       service_category: [
         "aws",
         "database",
