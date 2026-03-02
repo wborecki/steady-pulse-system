@@ -223,12 +223,14 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           agent_url: form.get('agent_url') as string,
           services: (form.get('systemctl_services') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
           endpoint: (form.get('agent_endpoint') as string) || '/systemctl',
+          token: (form.get('agent_token') as string) || undefined,
         };
         break;
       case 'container':
         checkConfig = {
           agent_url: form.get('agent_url') as string,
           endpoint: (form.get('agent_endpoint') as string) || '/containers',
+          token: (form.get('agent_token') as string) || undefined,
         };
         break;
     }
@@ -877,6 +879,45 @@ function CloudWatchAlarmsFields() {
   );
 }
 
+function AgentInstallInstructions() {
+  return (
+    <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-2">
+      <p className="text-xs font-medium text-foreground">📦 Instalação do Agente</p>
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">1. Copie o script para o servidor:</p>
+        <code className="block text-[10px] bg-background p-2 rounded border border-border font-mono break-all select-all">
+          sudo curl -o /opt/monitoring-agent.py https://raw.githubusercontent.com/SEU_REPO/main/docs/monitoring-agent.py && sudo chmod +x /opt/monitoring-agent.py
+        </code>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">2. Execute (com token opcional):</p>
+        <code className="block text-[10px] bg-background p-2 rounded border border-border font-mono break-all select-all">
+          sudo python3 /opt/monitoring-agent.py --port 9100 --token SEU_TOKEN
+        </code>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">3. Ou instale como serviço systemd (recomendado):</p>
+        <code className="block text-[10px] bg-background p-2 rounded border border-border font-mono whitespace-pre-wrap break-all select-all">
+{`sudo tee /etc/systemd/system/monitoring-agent.service << 'EOF'
+[Unit]
+Description=Monitoring Agent
+After=network.target
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/monitoring-agent.py --port 9100
+Environment=AGENT_TOKEN=seu_token_aqui
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now monitoring-agent`}
+        </code>
+      </div>
+    </div>
+  );
+}
+
 function SystemctlFields() {
   return (
     <div className="space-y-3">
@@ -888,15 +929,17 @@ function SystemctlFields() {
         <Label>Serviços a Monitorar (separados por vírgula)</Label>
         <Input name="systemctl_services" required placeholder="nginx, docker, postgresql, redis" className="bg-secondary border-border" />
       </div>
-      <div className="space-y-2">
-        <Label>Endpoint do Agente (opcional)</Label>
-        <Input name="agent_endpoint" defaultValue="/systemctl" className="bg-secondary border-border font-mono text-xs" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Endpoint (opcional)</Label>
+          <Input name="agent_endpoint" defaultValue="/systemctl" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label>Token de Autenticação (opcional)</Label>
+          <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" />
+        </div>
       </div>
-      <div className="rounded-md border border-border bg-secondary/30 p-3">
-        <p className="text-xs text-muted-foreground">
-          ⚙️ <strong>Agente necessário:</strong> Instale o agente de monitoramento no servidor. Ele expõe um endpoint HTTP que retorna o status dos serviços via <code>systemctl</code>.
-        </p>
-      </div>
+      <AgentInstallInstructions />
     </div>
   );
 }
@@ -908,15 +951,17 @@ function ContainerFields() {
         <Label>URL do Agente</Label>
         <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" />
       </div>
-      <div className="space-y-2">
-        <Label>Endpoint do Agente (opcional)</Label>
-        <Input name="agent_endpoint" defaultValue="/containers" className="bg-secondary border-border font-mono text-xs" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Endpoint (opcional)</Label>
+          <Input name="agent_endpoint" defaultValue="/containers" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label>Token de Autenticação (opcional)</Label>
+          <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" />
+        </div>
       </div>
-      <div className="rounded-md border border-border bg-secondary/30 p-3">
-        <p className="text-xs text-muted-foreground">
-          🐳 <strong>Agente necessário:</strong> Instale o agente no host Docker. Ele consulta a Docker Engine API e retorna status, CPU, memória e rede de cada container.
-        </p>
-      </div>
+      <AgentInstallInstructions />
     </div>
   );
 }

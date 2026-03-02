@@ -26,14 +26,19 @@ Deno.serve(async (req) => {
     const services = (config.services as string[]) || [];
     const endpoint = config.endpoint as string || "/systemctl";
 
+    const token = config.token as string || "";
+
     const start = Date.now();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
+    const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch(`${agentUrl}${endpoint}`, {
       signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
+      headers: fetchHeaders,
       method: "POST",
       body: JSON.stringify({ services }),
     });
