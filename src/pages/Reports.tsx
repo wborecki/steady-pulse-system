@@ -218,7 +218,7 @@ const Reports = () => {
       </div>
 
       {/* MTTR / MTBF / Ranking */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Reliability Metrics */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -226,14 +226,14 @@ const Reports = () => {
             <h2 className="font-heading font-semibold text-lg">MTTR & MTBF</h2>
           </div>
           <Card className="glass-card">
-            <CardContent className="p-4">
+            <CardContent className="p-0">
               <table className="w-full text-xs font-mono">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
-                    <th className="p-2 text-left">Serviço</th>
-                    <th className="p-2 text-right">Incidentes</th>
-                    <th className="p-2 text-right" title="Tempo Médio de Recuperação">MTTR</th>
-                    <th className="p-2 text-right" title="Tempo Médio Entre Falhas">MTBF</th>
+                    <th className="px-4 py-3 text-left">Serviço</th>
+                    <th className="px-4 py-3 text-right w-24">Incidentes</th>
+                    <th className="px-4 py-3 text-right w-20" title="Tempo Médio de Recuperação">MTTR</th>
+                    <th className="px-4 py-3 text-right w-20" title="Tempo Médio Entre Falhas">MTBF</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -241,13 +241,15 @@ const Reports = () => {
                     const m = reliabilityMetrics[s.id] || { mttr: 0, mtbf: 0, incidents: 0 };
                     return (
                       <tr key={s.id} className="border-b border-border/50 cursor-pointer hover:bg-secondary/50" onClick={() => navigate(`/service/${s.id}`)}>
-                        <td className="p-2 flex items-center gap-1.5">
-                          <StatusIndicator status={s.status as any} size="sm" />
-                          <span className="truncate">{s.name}</span>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <StatusIndicator status={s.status as any} size="sm" />
+                            <span className="truncate">{s.name}</span>
+                          </div>
                         </td>
-                        <td className={`p-2 text-right ${m.incidents > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{m.incidents}</td>
-                        <td className="p-2 text-right">{m.mttr > 0 ? `${m.mttr}min` : '--'}</td>
-                        <td className="p-2 text-right">{m.mtbf > 0 ? `${m.mtbf}h` : '--'}</td>
+                        <td className={`px-4 py-2.5 text-right ${m.incidents > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{m.incidents}</td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">{m.mttr > 0 ? `${m.mttr}min` : '--'}</td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">{m.mtbf > 0 ? `${m.mtbf}h` : '--'}</td>
                       </tr>
                     );
                   })}
@@ -264,32 +266,34 @@ const Reports = () => {
             <h2 className="font-heading font-semibold text-lg">Ranking de Disponibilidade</h2>
           </div>
           <Card className="glass-card">
-            <CardContent className="p-4 space-y-2">
+            <CardContent className="p-0">
               {uptimeRanking.length === 0 ? (
                 <p className="text-center py-4 text-muted-foreground font-mono text-xs">Sem dados</p>
               ) : (
-                uptimeRanking.map((s, i) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/service/${s.id}`)}
-                  >
-                    <span className={`text-xs font-mono w-6 text-right ${i < 3 && uptimeRanking.length > 3 ? 'text-destructive font-bold' : 'text-muted-foreground'}`}>
-                      #{uptimeRanking.length - i}
-                    </span>
-                    <StatusIndicator status={s.status as any} size="sm" />
-                    <span className="text-xs font-mono flex-1 truncate">{s.name}</span>
-                    <div className="w-24 h-2 bg-secondary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${s.calculatedUptime >= 99 ? 'bg-success' : s.calculatedUptime >= 95 ? 'bg-warning' : 'bg-destructive'}`}
-                        style={{ width: `${s.calculatedUptime}%` }}
-                      />
+                <div className="divide-y divide-border/50">
+                  {uptimeRanking.map((s, i) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/50 transition-colors"
+                      onClick={() => navigate(`/service/${s.id}`)}
+                    >
+                      <span className={`text-xs font-mono w-8 text-right shrink-0 ${i < 3 && uptimeRanking.length > 3 ? 'text-destructive font-bold' : 'text-muted-foreground'}`}>
+                        #{uptimeRanking.length - i}
+                      </span>
+                      <StatusIndicator status={s.status as any} size="sm" />
+                      <span className="text-xs font-mono flex-1 truncate min-w-0">{s.name}</span>
+                      <div className="w-24 h-2 bg-secondary rounded-full overflow-hidden shrink-0">
+                        <div
+                          className={`h-full rounded-full ${s.calculatedUptime >= 99 ? 'bg-success' : s.calculatedUptime >= 95 ? 'bg-warning' : 'bg-destructive'}`}
+                          style={{ width: `${s.calculatedUptime}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-mono w-16 text-right font-bold shrink-0 ${s.calculatedUptime >= 99 ? 'text-success' : s.calculatedUptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
+                        {s.calculatedUptime.toFixed(2)}%
+                      </span>
                     </div>
-                    <span className={`text-xs font-mono w-16 text-right font-bold ${s.calculatedUptime >= 99 ? 'text-success' : s.calculatedUptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
-                      {s.calculatedUptime.toFixed(2)}%
-                    </span>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
