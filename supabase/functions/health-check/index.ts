@@ -15,28 +15,101 @@ interface Service {
   status: string;
 }
 
-async function checkHttp(url: string): Promise<{
+async function checkSslExpiry(url: string): Promise<{ days_until_expiry: number | null; issuer: string | null; valid_from: string | null; valid_to: string | null; error: string | null }> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: "Not HTTPS" };
+    
+    const conn = await Deno.connectTls({ hostname: parsed.hostname, port: parseInt(parsed.port) || 443 });
+    const cert = conn.peerCertificates?.[0];
+    conn.close();
+    
+    if (!cert) return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: "No certificate" };
+    
+    // Parse certificate dates - Deno TLS certs have notBefore/notAfter as Date-like
+    const notAfter = cert.notAfter ? new Date(cert.notAfter) : null;
+    const notBefore = cert.notBefore ? new Date(cert.notBefore) : null;
+    const daysUntilExpiry = notAfter ? Math.floor((notAfter.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+    
+    // Extract issuer CN
+    const issuerStr = cert.issuer || "";
+    const cnMatch = typeof issuerStr === "string" ? issuerStr.match(/CN=([^,]+)/) : null;
+    const issuer = cnMatch ? cnMatch[1] : (typeof issuerStr === "string" ? issuerStr : null);
+    
+    return {
+      days_until_expiry: daysUntilExpiry,
+      issuer,
+      valid_from: notBefore?.toISOString() || null,
+      valid_to: notAfter?.toISOString() || null,
+      error: null,
+    };
+  } catch (err) {
+    return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: err.message };
+  }
+}
+
+async function checkHttp(url: string, config: Record<string, unknown> = {}): Promise<{
   status: "online" | "offline" | "warning";
   response_time: number;
   status_code: number | null;
   error_message: string | null;
+  ssl_info?: Record<string, unknown>;
 }> {
   const start = Date.now();
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
-    const res = await fetch(url, { signal: controller.signal });
+    
+    const method = (config.method as string) || "GET";
+    const fetchOpts: RequestInit = { signal: controller.signal, method };
+    
+    // Auth headers
+    const headers: Record<string, string> = {};
+    const auth = config.auth as Record<string, unknown> | undefined;
+    if (auth) {
+      if (auth.type === "basic") {
+        headers["Authorization"] = `Basic ${btoa(`${auth.username}:${auth.password}`)}`;
+      } else if (auth.type === "bearer") {
+        headers["Authorization"] = `Bearer ${auth.token}`;
+      }
+    }
+    
+    // Custom headers
+    const customHeaders = config.headers as Record<string, string> | undefined;
+    if (customHeaders) Object.assign(headers, customHeaders);
+    
+    if (Object.keys(headers).length > 0) fetchOpts.headers = headers;
+    
+    const res = await fetch(url, fetchOpts);
     clearTimeout(timeout);
     const response_time = Date.now() - start;
     const status_code = res.status;
     await res.text();
 
+    const expectedStatus = config.expected_status as number | undefined;
+    
+    // Check SSL certificate
+    let ssl_info: Record<string, unknown> | undefined;
+    try {
+      const sslResult = await checkSslExpiry(url);
+      if (sslResult.days_until_expiry !== null) {
+        ssl_info = sslResult as unknown as Record<string, unknown>;
+      }
+    } catch { /* SSL check is best-effort */ }
+
+    if (expectedStatus && status_code !== expectedStatus) {
+      return { status: "warning", response_time, status_code, error_message: `Expected ${expectedStatus}, got ${status_code}`, ssl_info };
+    }
+
     if (status_code >= 200 && status_code < 400) {
+      // Warn if SSL cert expires soon
+      const sslWarning = ssl_info && (ssl_info.days_until_expiry as number) <= 14;
       return {
-        status: response_time > 5000 ? "warning" : "online",
+        status: response_time > 5000 ? "warning" : sslWarning ? "warning" : "online",
         response_time,
         status_code,
-        error_message: null,
+        error_message: sslWarning ? `SSL certificate expires in ${ssl_info!.days_until_expiry} days` : null,
+        ssl_info,
       };
     } else {
       return {
@@ -44,6 +117,7 @@ async function checkHttp(url: string): Promise<{
         response_time,
         status_code,
         error_message: `HTTP ${status_code}`,
+        ssl_info,
       };
     }
   } catch (err) {
@@ -116,6 +190,7 @@ Deno.serve(async (req) => {
         response_time: number;
         status_code?: number | null;
         error_message: string | null;
+        ssl_info?: Record<string, unknown>;
       };
 
       // Helper to delegate to a sub-function
@@ -263,7 +338,7 @@ Deno.serve(async (req) => {
         case "http":
         default: {
           if (service.url) {
-            checkResult = await checkHttp(service.url);
+            checkResult = await checkHttp(service.url, service.check_config || {});
           } else {
             checkResult = {
               status: "warning",
@@ -290,15 +365,24 @@ Deno.serve(async (req) => {
       });
       const uptime = uptimeData ?? 0;
 
+      // Persist SSL info and other details in check_config for HTTP
+      const updateData: Record<string, unknown> = {
+        status: checkResult.status,
+        response_time: checkResult.response_time,
+        last_check: new Date().toISOString(),
+        uptime,
+      };
+
+      if (checkResult.ssl_info) {
+        const { data: svcCurrent } = await supabase.from("services").select("check_config").eq("id", service.id).single();
+        const existingConfig = (svcCurrent?.check_config as Record<string, unknown>) || {};
+        updateData.check_config = { ...existingConfig, _ssl_info: checkResult.ssl_info };
+      }
+
       // Update service status + uptime
       await supabase
         .from("services")
-        .update({
-          status: checkResult.status,
-          response_time: checkResult.response_time,
-          last_check: new Date().toISOString(),
-          uptime,
-        })
+        .update(updateData)
         .eq("id", service.id);
 
       // Create alert if status changed
@@ -326,6 +410,20 @@ Deno.serve(async (req) => {
           type: "info",
           message: `${service.name} voltou ao ar`,
         });
+      }
+
+      // SSL expiry alert
+      if (checkResult.ssl_info) {
+        const daysLeft = checkResult.ssl_info.days_until_expiry as number;
+        if (daysLeft !== null && daysLeft <= 7) {
+          await supabase.from("alerts").insert({
+            service_id: service.id,
+            type: daysLeft <= 0 ? "critical" : "warning",
+            message: daysLeft <= 0 
+              ? `${service.name}: Certificado SSL EXPIRADO!` 
+              : `${service.name}: Certificado SSL expira em ${daysLeft} dia(s)`,
+          });
+        }
       }
 
       results.push({
