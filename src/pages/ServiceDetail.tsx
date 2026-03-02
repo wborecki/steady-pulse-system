@@ -57,6 +57,9 @@ function isDbType(checkType: string) {
 function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
 }
+function isAirflowType(checkType: string) {
+  return checkType === 'airflow';
+}
 
 const ServiceDetail = () => {
   const { id } = useParams();
@@ -276,7 +279,14 @@ const ServiceDetail = () => {
 
       {/* Contextual Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {isHttpType(checkType) ? (
+        {isAirflowType(checkType) ? (
+          <>
+            <MetricCard label="Pool Utilization" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="DAG Success Rate" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+          </>
+        ) : isHttpType(checkType) ? (
           <>
             <MetricCard label="Latência (p50)" value={latencyPercentiles.p50} unit="ms" color="text-primary" />
             <MetricCard label="Latência (p95)" value={latencyPercentiles.p95} unit="ms" color="text-warning" />
@@ -299,6 +309,124 @@ const ServiceDetail = () => {
           </>
         )}
       </div>
+
+      {/* Airflow-specific Details */}
+      {isAirflowType(checkType) && (() => {
+        const details = (config as any)?._airflow_details;
+        if (!details) return null;
+        const dags = details.dags || {};
+        const runs = details.recent_runs || {};
+        const scheduler = details.scheduler;
+        const metadb = details.metadatabase;
+        const triggerer = details.triggerer;
+        return (
+          <div className="space-y-4">
+            {/* Scheduler / Metadatabase / Triggerer status */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { label: 'Scheduler', data: scheduler },
+                { label: 'Metadatabase', data: metadb },
+                { label: 'Triggerer', data: triggerer },
+              ].map(({ label, data }) => (
+                <Card key={label} className="glass-card">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">{label}</p>
+                      {data ? (
+                        <span className={`text-xs font-mono px-2 py-0.5 rounded ${data.status === 'healthy' ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
+                          {data.status || 'unknown'}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-mono text-muted-foreground">N/A</span>
+                      )}
+                    </div>
+                    {data?.latest_heartbeat_received_at && (
+                      <p className="text-[10px] font-mono text-muted-foreground">
+                        Heartbeat: {new Date(data.latest_heartbeat_received_at).toLocaleString('pt-BR')}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* DAGs summary */}
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">DAGs</h3>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-foreground">{dags.total ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Total</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-success">{dags.active ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Ativas</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-muted-foreground">{dags.paused ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Pausadas</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent DAG Runs */}
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">DAG Runs Recentes</h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-foreground">{runs.total ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Total</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-success">{runs.success ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Sucesso</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-destructive">{runs.failed ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Falhas</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-primary">{runs.running ?? 0}</p>
+                    <p className="text-xs font-mono text-muted-foreground">Executando</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-warning">{runs.success_rate ?? 0}%</p>
+                    <p className="text-xs font-mono text-muted-foreground">Taxa Sucesso</p>
+                  </div>
+                </div>
+                {/* Visual bar for success rate */}
+                <div className="mt-3 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${(runs.success_rate ?? 100) >= 90 ? 'bg-success' : (runs.success_rate ?? 100) >= 70 ? 'bg-warning' : 'bg-destructive'}`}
+                    style={{ width: `${runs.success_rate ?? 0}%` }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Import Errors & Pool */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Import Errors</p>
+                  <p className={`text-3xl font-heading font-bold ${(details.import_errors ?? 0) > 0 ? 'text-destructive' : 'text-success'}`}>
+                    {details.import_errors ?? 0}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">API Version</p>
+                  <p className="text-3xl font-heading font-bold text-primary">{details.api_version || 'N/A'}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* HTTP-specific: Status Code Distribution */}
       {isHttpType(checkType) && history.length > 0 && (
@@ -337,20 +465,20 @@ const ServiceDetail = () => {
         </div>
       </div>
 
-      {/* Resource History Charts (for infra types or when data exists) */}
-      {(isInfraType(checkType) || cpuHistory.length > 0) && (
+      {/* Resource History Charts */}
+      {(isInfraType(checkType) || isAirflowType(checkType) || cpuHistory.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {cpuHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title="CPU (%)" data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
             </div>
           )}
           {memHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title="Memória (%)" data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
             </div>
           )}
-          {diskHistory.length > 0 && (
+          {diskHistory.length > 0 && !isAirflowType(checkType) && (
             <div className="glass-card rounded-lg p-4">
               <MetricsChart title="Disco (%)" data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
             </div>
