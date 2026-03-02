@@ -46,18 +46,44 @@ const Services = () => {
     const type = form.get('check_type') as string || 'http';
     
     let checkConfig: Record<string, unknown> = {};
-    if (type === 'tcp') {
-      checkConfig = {
-        host: form.get('tcp_host') as string,
-        port: Number(form.get('tcp_port')),
-      };
+    let url: string | null = null;
+
+    switch (type) {
+      case 'tcp':
+        checkConfig = { host: form.get('tcp_host') as string, port: Number(form.get('tcp_port')) };
+        break;
+      case 'postgresql':
+        checkConfig = { connection_string: form.get('pg_connection_string') as string };
+        break;
+      case 'mongodb':
+        checkConfig = {
+          connection_string: form.get('mongo_connection_string') as string,
+          database: (form.get('mongo_database') as string) || undefined,
+        };
+        break;
+      case 'cloudwatch':
+        checkConfig = {
+          metric_type: form.get('cw_metric_type') as string || 'EC2',
+          instance_id: form.get('cw_instance_id') as string,
+          region: (form.get('cw_region') as string) || undefined,
+        };
+        break;
+      case 's3':
+        checkConfig = {
+          bucket_name: form.get('s3_bucket') as string,
+          region: (form.get('s3_region') as string) || undefined,
+        };
+        break;
+      case 'http':
+        url = (form.get('url') as string) || null;
+        break;
     }
 
     try {
       await createService.mutateAsync({
         name: form.get('name') as string,
         category: form.get('category') as string,
-        url: type === 'http' ? (form.get('url') as string) || null : null,
+        url,
         description: (form.get('description') as string) || '',
         check_type: type,
         check_config: checkConfig,
@@ -117,9 +143,13 @@ const Services = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="http">HTTP</SelectItem>
+                        <SelectItem value="http">HTTP / Site</SelectItem>
                         <SelectItem value="tcp">TCP</SelectItem>
                         <SelectItem value="sql_query">SQL Server (Azure)</SelectItem>
+                        <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                        <SelectItem value="mongodb">MongoDB</SelectItem>
+                        <SelectItem value="cloudwatch">AWS CloudWatch</SelectItem>
+                        <SelectItem value="s3">AWS S3</SelectItem>
                         <SelectItem value="process">Processo</SelectItem>
                         <SelectItem value="custom">Customizado</SelectItem>
                       </SelectContent>
@@ -150,13 +180,73 @@ const Services = () => {
                 {checkType === 'sql_query' && (
                   <div className="rounded-md border border-border bg-secondary/50 p-3 text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">📊 Azure SQL Server</p>
-                    <p>As credenciais do Azure SQL já estão configuradas no backend. Este serviço irá coletar automaticamente:</p>
-                    <ul className="list-disc list-inside mt-1 space-y-0.5">
-                      <li>CPU e Memória (DMVs)</li>
-                      <li>Uso de disco / storage</li>
-                      <li>Conexões ativas</li>
-                      <li>Top waits e latência</li>
-                    </ul>
+                    <p>Usa as credenciais configuradas no backend. Coleta CPU, Memória, Conexões e Top Waits via DMVs.</p>
+                  </div>
+                )}
+
+                {checkType === 'postgresql' && (
+                  <div className="space-y-2">
+                    <Label>Connection String</Label>
+                    <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" />
+                    <p className="text-xs text-muted-foreground">Coleta: conexões, cache hit ratio, tamanho do banco, replication lag, transações.</p>
+                  </div>
+                )}
+
+                {checkType === 'mongodb' && (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Connection String</Label>
+                      <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Database (opcional)</Label>
+                      <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Coleta: conexões, memória, opcounters, tamanho do banco, operações ativas.</p>
+                  </div>
+                )}
+
+                {checkType === 'cloudwatch' && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Tipo de Recurso</Label>
+                        <Select name="cw_metric_type" defaultValue="EC2">
+                          <SelectTrigger className="bg-secondary border-border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="EC2">EC2</SelectItem>
+                            <SelectItem value="RDS">RDS</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Região AWS</Label>
+                        <Input name="cw_region" placeholder="us-east-1" className="bg-secondary border-border" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Instance ID / DB Identifier</Label>
+                      <Input name="cw_instance_id" required placeholder="i-0abc123def ou mydb-instance" className="bg-secondary border-border font-mono text-xs" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Usa credenciais AWS configuradas. Coleta CPU, Network, StatusCheck (EC2) ou CPU, Memória, Conexões, Latência (RDS).</p>
+                  </div>
+                )}
+
+                {checkType === 's3' && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Nome do Bucket</Label>
+                        <Input name="s3_bucket" required placeholder="meu-bucket-prod" className="bg-secondary border-border" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Região AWS</Label>
+                        <Input name="s3_region" placeholder="us-east-1" className="bg-secondary border-border" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Usa credenciais AWS configuradas. Verifica acessibilidade e existência do bucket.</p>
                   </div>
                 )}
 

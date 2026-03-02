@@ -118,6 +118,46 @@ Deno.serve(async (req) => {
         error_message: string | null;
       };
 
+      // Helper to delegate to a sub-function
+      const delegateToFunction = async (fnName: string) => {
+        try {
+          const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/${fnName}?service_id=${service.id}`;
+          const fnRes = await fetch(fnUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+          });
+          const fnData = await fnRes.json();
+          if (fnData.success) {
+            results.push({
+              service_id: service.id,
+              name: service.name,
+              uptime: 0,
+              status: fnData.metrics.status,
+              response_time: fnData.metrics.response_time || fnData.response_time,
+              error_message: fnData.metrics.error_message,
+              cpu: fnData.metrics.cpu_percent ?? fnData.metrics.cpu ?? 0,
+              memory: fnData.metrics.memory_percent ?? fnData.metrics.memory ?? 0,
+              disk: fnData.metrics.storage_percent ?? fnData.metrics.disk ?? 0,
+            });
+            return null; // signal to continue
+          }
+          return {
+            status: "offline",
+            response_time: 0,
+            error_message: fnData.error || `${fnName} check failed`,
+          };
+        } catch (err) {
+          return {
+            status: "offline",
+            response_time: 0,
+            error_message: `${fnName} error: ${err.message}`,
+          };
+        }
+      };
+
       switch (service.check_type) {
         case "tcp": {
           const config = service.check_config as { host?: string; port?: number };
@@ -133,9 +173,32 @@ Deno.serve(async (req) => {
           break;
         }
         case "sql_query": {
-          // Delegate to azure-sql-metrics function
+          const result = await delegateToFunction("azure-sql-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "postgresql": {
+          const result = await delegateToFunction("postgresql-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "mongodb": {
+          const result = await delegateToFunction("mongodb-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "cloudwatch": {
+          const result = await delegateToFunction("aws-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "s3": {
+          const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/aws-metrics?service_id=${service.id}&check_type=s3`;
           try {
-            const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/azure-sql-metrics?service_id=${service.id}`;
             const fnRes = await fetch(fnUrl, {
               method: "POST",
               headers: {
@@ -145,36 +208,19 @@ Deno.serve(async (req) => {
             });
             const fnData = await fnRes.json();
             if (fnData.success) {
-              // Already saved by azure-sql-metrics, just collect result
-              checkResult = {
-                status: fnData.metrics.status,
-                response_time: fnData.response_time,
-                error_message: fnData.metrics.error_message,
-              };
-              // Skip the save/update below since azure-sql-metrics already did it
               results.push({
                 service_id: service.id,
                 name: service.name,
                 uptime: 0,
-                ...checkResult,
-                cpu: fnData.metrics.cpu_percent,
-                memory: fnData.metrics.memory_percent,
-                disk: fnData.metrics.storage_percent,
+                status: fnData.metrics.status,
+                response_time: fnData.metrics.response_time,
+                error_message: fnData.metrics.error_message,
               });
               continue;
-            } else {
-              checkResult = {
-                status: "offline",
-                response_time: 0,
-                error_message: fnData.error || "Azure SQL check failed",
-              };
             }
+            checkResult = { status: "offline", response_time: 0, error_message: fnData.error || "S3 check failed" };
           } catch (err) {
-            checkResult = {
-              status: "offline",
-              response_time: 0,
-              error_message: `Azure SQL function error: ${err.message}`,
-            };
+            checkResult = { status: "offline", response_time: 0, error_message: `S3 error: ${err.message}` };
           }
           break;
         }
