@@ -14,7 +14,154 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alerts: {
+        Row: {
+          acknowledged: boolean
+          created_at: string
+          id: string
+          message: string
+          service_id: string
+          type: Database["public"]["Enums"]["alert_type"]
+        }
+        Insert: {
+          acknowledged?: boolean
+          created_at?: string
+          id?: string
+          message: string
+          service_id: string
+          type?: Database["public"]["Enums"]["alert_type"]
+        }
+        Update: {
+          acknowledged?: boolean
+          created_at?: string
+          id?: string
+          message?: string
+          service_id?: string
+          type?: Database["public"]["Enums"]["alert_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alerts_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      health_checks: {
+        Row: {
+          checked_at: string
+          cpu: number | null
+          disk: number | null
+          error_message: string | null
+          id: string
+          memory: number | null
+          response_time: number | null
+          service_id: string
+          status: Database["public"]["Enums"]["service_status"]
+          status_code: number | null
+        }
+        Insert: {
+          checked_at?: string
+          cpu?: number | null
+          disk?: number | null
+          error_message?: string | null
+          id?: string
+          memory?: number | null
+          response_time?: number | null
+          service_id: string
+          status: Database["public"]["Enums"]["service_status"]
+          status_code?: number | null
+        }
+        Update: {
+          checked_at?: string
+          cpu?: number | null
+          disk?: number | null
+          error_message?: string | null
+          id?: string
+          memory?: number | null
+          response_time?: number | null
+          service_id?: string
+          status?: Database["public"]["Enums"]["service_status"]
+          status_code?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_checks_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          category: Database["public"]["Enums"]["service_category"]
+          check_config: Json | null
+          check_interval_seconds: number
+          check_type: Database["public"]["Enums"]["check_type"]
+          cpu: number
+          created_at: string
+          description: string
+          disk: number
+          enabled: boolean
+          id: string
+          last_check: string | null
+          memory: number
+          name: string
+          region: string | null
+          response_time: number
+          status: Database["public"]["Enums"]["service_status"]
+          updated_at: string
+          uptime: number
+          url: string | null
+        }
+        Insert: {
+          category?: Database["public"]["Enums"]["service_category"]
+          check_config?: Json | null
+          check_interval_seconds?: number
+          check_type?: Database["public"]["Enums"]["check_type"]
+          cpu?: number
+          created_at?: string
+          description?: string
+          disk?: number
+          enabled?: boolean
+          id?: string
+          last_check?: string | null
+          memory?: number
+          name: string
+          region?: string | null
+          response_time?: number
+          status?: Database["public"]["Enums"]["service_status"]
+          updated_at?: string
+          uptime?: number
+          url?: string | null
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["service_category"]
+          check_config?: Json | null
+          check_interval_seconds?: number
+          check_type?: Database["public"]["Enums"]["check_type"]
+          cpu?: number
+          created_at?: string
+          description?: string
+          disk?: number
+          enabled?: boolean
+          id?: string
+          last_check?: string | null
+          memory?: number
+          name?: string
+          region?: string | null
+          response_time?: number
+          status?: Database["public"]["Enums"]["service_status"]
+          updated_at?: string
+          uptime?: number
+          url?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +170,16 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      alert_type: "critical" | "warning" | "info"
+      check_type: "http" | "tcp" | "process" | "sql_query" | "custom"
+      service_category:
+        | "aws"
+        | "database"
+        | "airflow"
+        | "server"
+        | "process"
+        | "api"
+      service_status: "online" | "offline" | "warning" | "maintenance"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +306,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      alert_type: ["critical", "warning", "info"],
+      check_type: ["http", "tcp", "process", "sql_query", "custom"],
+      service_category: [
+        "aws",
+        "database",
+        "airflow",
+        "server",
+        "process",
+        "api",
+      ],
+      service_status: ["online", "offline", "warning", "maintenance"],
+    },
   },
 } as const

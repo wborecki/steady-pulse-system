@@ -1,25 +1,36 @@
-import { useState } from 'react';
-import { alerts as initialAlerts } from '@/data/mockData';
+import { useAlerts, useAcknowledgeAlert, useAcknowledgeAll } from '@/hooks/useAlerts';
 import { AlertItem } from '@/components/monitoring/AlertItem';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 const Alerts = () => {
-  const [alertList, setAlertList] = useState(initialAlerts);
+  const { data: alerts = [], isLoading } = useAlerts();
+  const acknowledgeAlert = useAcknowledgeAlert();
+  const acknowledgeAll = useAcknowledgeAll();
 
   const handleAcknowledge = (id: string) => {
-    setAlertList(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
-    toast.success('Alerta reconhecido');
+    acknowledgeAlert.mutate(id, {
+      onSuccess: () => toast.success('Alerta reconhecido'),
+    });
   };
 
   const handleAcknowledgeAll = () => {
-    setAlertList(prev => prev.map(a => ({ ...a, acknowledged: true })));
-    toast.success('Todos os alertas foram reconhecidos');
+    acknowledgeAll.mutate(undefined, {
+      onSuccess: () => toast.success('Todos os alertas foram reconhecidos'),
+    });
   };
 
-  const unack = alertList.filter(a => !a.acknowledged);
-  const ack = alertList.filter(a => a.acknowledged);
+  const unack = alerts.filter(a => !a.acknowledged);
+  const ack = alerts.filter(a => a.acknowledged);
+
+  if (isLoading) {
+    return (
+      <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
+        <p className="font-mono text-muted-foreground">Carregando...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 grid-bg min-h-screen">
@@ -39,7 +50,21 @@ const Alerts = () => {
         <div className="space-y-3">
           <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Pendentes</h2>
           <div className="space-y-2">
-            {unack.map(a => <AlertItem key={a.id} alert={a} onAcknowledge={handleAcknowledge} />)}
+            {unack.map(a => (
+              <AlertItem
+                key={a.id}
+                alert={{
+                  id: a.id,
+                  serviceId: a.service_id,
+                  serviceName: a.services?.name || 'Serviço',
+                  type: a.type as 'critical' | 'warning' | 'info',
+                  message: a.message,
+                  timestamp: a.created_at,
+                  acknowledged: a.acknowledged,
+                }}
+                onAcknowledge={handleAcknowledge}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -48,12 +73,25 @@ const Alerts = () => {
         <div className="space-y-3">
           <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Reconhecidos</h2>
           <div className="space-y-2 opacity-60">
-            {ack.map(a => <AlertItem key={a.id} alert={a} />)}
+            {ack.map(a => (
+              <AlertItem
+                key={a.id}
+                alert={{
+                  id: a.id,
+                  serviceId: a.service_id,
+                  serviceName: a.services?.name || 'Serviço',
+                  type: a.type as 'critical' | 'warning' | 'info',
+                  message: a.message,
+                  timestamp: a.created_at,
+                  acknowledged: a.acknowledged,
+                }}
+              />
+            ))}
           </div>
         </div>
       )}
 
-      {alertList.length === 0 && (
+      {alerts.length === 0 && (
         <div className="text-center py-12">
           <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
           <p className="text-muted-foreground font-mono">Nenhum alerta registrado</p>
