@@ -119,6 +119,7 @@ const Services = () => {
                       <SelectContent>
                         <SelectItem value="http">HTTP</SelectItem>
                         <SelectItem value="tcp">TCP</SelectItem>
+                        <SelectItem value="sql_query">SQL Server (Azure)</SelectItem>
                         <SelectItem value="process">Processo</SelectItem>
                         <SelectItem value="custom">Customizado</SelectItem>
                       </SelectContent>
@@ -143,6 +144,19 @@ const Services = () => {
                       <Label>Porta</Label>
                       <Input name="tcp_port" type="number" required placeholder="5432" className="bg-secondary border-border" />
                     </div>
+                  </div>
+                )}
+
+                {checkType === 'sql_query' && (
+                  <div className="rounded-md border border-border bg-secondary/50 p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground mb-1">📊 Azure SQL Server</p>
+                    <p>As credenciais do Azure SQL já estão configuradas no backend. Este serviço irá coletar automaticamente:</p>
+                    <ul className="list-disc list-inside mt-1 space-y-0.5">
+                      <li>CPU e Memória (DMVs)</li>
+                      <li>Uso de disco / storage</li>
+                      <li>Conexões ativas</li>
+                      <li>Top waits e latência</li>
+                    </ul>
                   </div>
                 )}
 
