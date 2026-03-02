@@ -718,11 +718,22 @@ function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string;
 }
 
 function AirflowFields() {
+  const [authType, setAuthType] = useState('jwt');
   return (
     <div className="space-y-3">
       <div className="space-y-2">
+        <Label>Versão / Autenticação</Label>
+        <Select name="airflow_auth_type" defaultValue="jwt" onValueChange={setAuthType}>
+          <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="jwt">Airflow 3.x (JWT automático)</SelectItem>
+            <SelectItem value="basic">Airflow 2.x (Basic Auth)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
         <Label>URL do Airflow</Label>
-        <Input name="airflow_url" required placeholder="http://212.47.72.193:8080" className="bg-secondary border-border" />
+        <Input name="airflow_url" required placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -734,19 +745,20 @@ function AirflowFields() {
           <Input name="airflow_password" type="password" required placeholder="••••••••" className="bg-secondary border-border" />
         </div>
       </div>
-      <div className="space-y-2">
-        <Label>Autenticação</Label>
-        <Select name="airflow_auth_type" defaultValue="jwt">
-          <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="jwt">JWT Token (Airflow 3.x)</SelectItem>
-            <SelectItem value="basic">Basic Auth (Airflow 2.x)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {authType === 'jwt' ? (
+        <div className="rounded-md border border-border bg-secondary/30 p-3">
+          <p className="text-xs text-muted-foreground">
+            🔐 <strong>JWT automático:</strong> O sistema obtém o token via <code>POST /auth/token</code> usando suas credenciais e o armazena em cache por 25 minutos. Você não precisa gerenciar tokens manualmente.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-border bg-secondary/30 p-3">
+          <p className="text-xs text-muted-foreground">
+            🔑 <strong>Basic Auth:</strong> Usuário e senha são enviados diretamente em cada chamada à API <code>/api/v1</code>. Compatível com Airflow 2.x.
+          </p>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
-        <strong>JWT (Airflow 3.x):</strong> Obtém token via <code>/auth/token</code> e usa nas chamadas <code>/api/v2</code>.<br />
-        <strong>Basic (Airflow 2.x):</strong> Usa usuário/senha direto nas chamadas <code>/api/v1</code>.<br />
         Coleta: Health do Scheduler, DAGs, DAG Runs, Import Errors, Pool Utilization.
       </p>
     </div>

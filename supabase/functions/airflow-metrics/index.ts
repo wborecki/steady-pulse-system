@@ -10,10 +10,13 @@ interface AirflowConfig {
   base_url: string;
   username: string;
   password: string;
-  auth_type?: "jwt" | "basic"; // default jwt for Airflow 3.x
+  auth_type?: "jwt" | "basic";
+  // Cached token fields (managed automatically)
+  _cached_token?: string;
+  _token_expires_at?: string; // ISO timestamp
 }
 
-async function getJwtToken(baseUrl: string, username: string, password: string): Promise<string> {
+async function getJwtToken(baseUrl: string, username: string, password: string): Promise<{ token: string; expiresAt: string }> {
   const url = `${baseUrl.replace(/\/$/, "")}/auth/token`;
   const res = await fetch(url, {
     method: "POST",
@@ -25,7 +28,43 @@ async function getJwtToken(baseUrl: string, username: string, password: string):
     throw new Error(`Failed to get Airflow JWT token (${res.status}): ${body}`);
   }
   const data = await res.json();
-  return data.access_token;
+  // Cache for 25 minutes (Airflow default token expiry is 30min)
+  const expiresAt = new Date(Date.now() + 25 * 60 * 1000).toISOString();
+  return { token: data.access_token, expiresAt };
+}
+
+function isTokenValid(config: AirflowConfig): boolean {
+  if (!config._cached_token || !config._token_expires_at) return false;
+  return new Date(config._token_expires_at) > new Date();
+}
+
+async function getAuthHeader(config: AirflowConfig, supabase: any, serviceId: string | null): Promise<string> {
+  const baseUrl = config.base_url.replace(/\/$/, "");
+
+  if (config.auth_type === "basic") {
+    return `Basic ${btoa(`${config.username}:${config.password}`)}`;
+  }
+
+  // JWT flow - check cache first
+  if (isTokenValid(config)) {
+    console.log("Using cached Airflow JWT token");
+    return `Bearer ${config._cached_token}`;
+  }
+
+  // Token expired or not cached - get new one
+  console.log("Obtaining new Airflow JWT token...");
+  const { token, expiresAt } = await getJwtToken(baseUrl, config.username, config.password);
+
+  // Persist cached token in check_config
+  if (serviceId && supabase) {
+    const { data: svc } = await supabase.from("services").select("check_config").eq("id", serviceId).single();
+    const existingConfig = (svc?.check_config as Record<string, unknown>) || {};
+    await supabase.from("services").update({
+      check_config: { ...existingConfig, _cached_token: token, _token_expires_at: expiresAt },
+    }).eq("id", serviceId);
+  }
+
+  return `Bearer ${token}`;
 }
 
 async function airflowFetch(baseUrl: string, path: string, authHeader: string) {
@@ -44,19 +83,9 @@ async function airflowFetch(baseUrl: string, path: string, authHeader: string) {
   return res.json();
 }
 
-async function collectAirflowMetrics(config: AirflowConfig) {
+async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) {
   const start = Date.now();
   const baseUrl = config.base_url.replace(/\/$/, "");
-  const authType = config.auth_type || "jwt";
-
-  // Get auth header
-  let authHeader: string;
-  if (authType === "basic") {
-    authHeader = `Basic ${btoa(`${config.username}:${config.password}`)}`;
-  } else {
-    const token = await getJwtToken(baseUrl, config.username, config.password);
-    authHeader = `Bearer ${token}`;
-  }
 
   // Detect API version: try v2 first (Airflow 3.x), fall back to v1 (Airflow 2.x)
   let apiPrefix = "/api/v2";
@@ -66,7 +95,7 @@ async function collectAirflowMetrics(config: AirflowConfig) {
     apiPrefix = "/api/v1";
   }
 
-  // 1. Health check (no API prefix, works on both versions)
+  // 1. Health check
   let health: any = {};
   try {
     health = await airflowFetch(baseUrl, `${apiPrefix}/monitor/health`, authHeader);
@@ -96,9 +125,7 @@ async function collectAirflowMetrics(config: AirflowConfig) {
   try {
     const runsData = await airflowFetch(baseUrl, `${apiPrefix}/dags/~/dagRuns?limit=50&order_by=-start_date`, authHeader);
     runs = runsData.dag_runs || [];
-  } catch {
-    // Some versions may not support ~/dagRuns
-  }
+  } catch { /* optional */ }
   const successRuns = runs.filter((r: any) => r.state === "success").length;
   const failedRuns = runs.filter((r: any) => r.state === "failed").length;
   const runningRuns = runs.filter((r: any) => r.state === "running").length;
@@ -175,13 +202,18 @@ Deno.serve(async (req) => {
       username: config.username as string,
       password: config.password as string,
       auth_type: (config.auth_type as "jwt" | "basic") || "jwt",
+      _cached_token: config._cached_token as string | undefined,
+      _token_expires_at: config._token_expires_at as string | undefined,
     };
 
     if (!airflowConfig.base_url || !airflowConfig.username || !airflowConfig.password) {
       throw new Error("Airflow config missing: base_url, username, or password");
     }
 
-    const metrics = await collectAirflowMetrics(airflowConfig);
+    // Get auth header (uses cache if available)
+    const authHeader = await getAuthHeader(airflowConfig, supabase, serviceId);
+
+    const metrics = await collectAirflowMetrics(airflowConfig, authHeader);
 
     if (serviceId) {
       await supabase.from("health_checks").insert({
