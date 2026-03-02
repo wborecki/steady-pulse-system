@@ -190,6 +190,12 @@ Deno.serve(async (req) => {
           checkResult = result;
           break;
         }
+        case "airflow": {
+          const result = await delegateToFunction("airflow-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
         case "cloudwatch": {
           const result = await delegateToFunction("aws-metrics");
           if (result === null) continue;
