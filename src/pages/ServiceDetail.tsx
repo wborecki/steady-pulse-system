@@ -166,6 +166,9 @@ function isDbType(checkType: string) {
 function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
 }
+function isAgentType(checkType: string) {
+  return ['systemctl', 'container'].includes(checkType);
+}
 function isAirflowType(checkType: string) {
   return checkType === 'airflow';
 }
@@ -1207,21 +1210,21 @@ const ServiceDetail = () => {
       </div>
 
       {/* Resource History Charts */}
-      {(isInfraType(checkType) || isAirflowType(checkType) || cpuHistory.length > 0) && (
+      {(isInfraType(checkType) || isAirflowType(checkType) || isAgentType(checkType) || cpuHistory.length > 0) && (
         <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
           {cpuHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : checkType === 'postgresql' ? "Conexões (%)" : checkType === 'mongodb' ? "Conexões (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : checkType === 'postgresql' ? "Conexões (%)" : checkType === 'mongodb' ? "Conexões (%)" : checkType === 'systemctl' ? "CPU Servidor (%)" : checkType === 'container' ? "CPU Containers (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
             </div>
           )}
           {memHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : checkType === 'postgresql' ? "Cache Hit Ratio (%)" : checkType === 'mongodb' ? "Memória (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : checkType === 'postgresql' ? "Cache Hit Ratio (%)" : checkType === 'mongodb' ? "Memória (%)" : checkType === 'systemctl' ? "RAM Servidor (%)" : checkType === 'container' ? "Memória Containers (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
             </div>
           )}
           {diskHistory.length > 0 && !isAirflowType(checkType) && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={checkType === 'sql_query' ? "Storage (%)" : checkType === 'mongodb' ? "Disco (%)" : "Disco (%)"} data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
+              <MetricsChart title={checkType === 'sql_query' ? "Storage (%)" : isAgentType(checkType) ? "Disco Servidor (%)" : "Disco (%)"} data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
             </div>
           )}
         </div>
