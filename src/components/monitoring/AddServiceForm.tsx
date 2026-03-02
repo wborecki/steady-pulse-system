@@ -12,15 +12,17 @@ import { Minus, Plus } from 'lucide-react';
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
   server: 'Servidores', process: 'Processos', api: 'APIs',
+  container: 'Containers',
 };
 
 const categoryCheckTypes: Record<string, string[]> = {
-  aws: ['cloudwatch', 's3'],
+  aws: ['cloudwatch', 's3', 'lambda', 'ecs', 'cloudwatch_alarms'],
   database: ['sql_query', 'postgresql', 'mongodb'],
   airflow: ['airflow'],
-  server: ['tcp', 'process'],
+  server: ['tcp', 'process', 'systemctl'],
   process: ['process'],
   api: ['http'],
+  container: ['container'],
 };
 
 const checkTypeLabels: Record<string, string> = {
@@ -33,6 +35,11 @@ const checkTypeLabels: Record<string, string> = {
   s3: 'AWS S3',
   process: 'Processo',
   airflow: 'Apache Airflow',
+  lambda: 'AWS Lambda',
+  ecs: 'AWS ECS',
+  cloudwatch_alarms: 'CloudWatch Alarms',
+  systemctl: 'Systemctl (Linux)',
+  container: 'Docker / Container',
 };
 
 interface ServiceFormData {
@@ -192,6 +199,38 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           auth_type: (form.get('airflow_auth_type') as string) || 'jwt',
         };
         break;
+      case 'lambda':
+        checkConfig = {
+          function_name: form.get('lambda_function_name') as string,
+          region: (form.get('lambda_region') as string) || undefined,
+        };
+        break;
+      case 'ecs':
+        checkConfig = {
+          cluster: form.get('ecs_cluster') as string,
+          service_name: form.get('ecs_service_name') as string,
+          region: (form.get('ecs_region') as string) || undefined,
+        };
+        break;
+      case 'cloudwatch_alarms':
+        checkConfig = {
+          alarm_prefix: (form.get('cw_alarm_prefix') as string) || undefined,
+          region: (form.get('cw_alarm_region') as string) || undefined,
+        };
+        break;
+      case 'systemctl':
+        checkConfig = {
+          agent_url: form.get('agent_url') as string,
+          services: (form.get('systemctl_services') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
+          endpoint: (form.get('agent_endpoint') as string) || '/systemctl',
+        };
+        break;
+      case 'container':
+        checkConfig = {
+          agent_url: form.get('agent_url') as string,
+          endpoint: (form.get('agent_endpoint') as string) || '/containers',
+        };
+        break;
     }
 
     const serviceData = {
@@ -290,6 +329,21 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
 
       {/* S3 fields */}
       {checkType === 's3' && <S3Fields />}
+
+      {/* Lambda fields */}
+      {checkType === 'lambda' && <LambdaFields />}
+
+      {/* ECS fields */}
+      {checkType === 'ecs' && <EcsFields />}
+
+      {/* CloudWatch Alarms fields */}
+      {checkType === 'cloudwatch_alarms' && <CloudWatchAlarmsFields />}
+
+      {/* Systemctl fields */}
+      {checkType === 'systemctl' && <SystemctlFields />}
+
+      {/* Container fields */}
+      {checkType === 'container' && <ContainerFields />}
 
       {/* Interval */}
       <div className="space-y-2">
@@ -761,6 +815,108 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
       <p className="text-xs text-muted-foreground">
         Coleta: Health do Scheduler, DAGs, DAG Runs, Import Errors, Pool Utilization.
       </p>
+    </div>
+  );
+}
+
+function LambdaFields() {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Nome da Função Lambda</Label>
+          <Input name="lambda_function_name" required placeholder="my-function-prod" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label>Região AWS</Label>
+          <Input name="lambda_region" placeholder="us-east-1" className="bg-secondary border-border" />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Coleta via CloudWatch: Invocations, Errors, Duration (avg/p99), Throttles, ConcurrentExecutions.</p>
+    </div>
+  );
+}
+
+function EcsFields() {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Cluster ECS</Label>
+          <Input name="ecs_cluster" required placeholder="my-cluster" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+        <div className="space-y-2">
+          <Label>Nome do Serviço</Label>
+          <Input name="ecs_service_name" required placeholder="my-service" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Região AWS</Label>
+        <Input name="ecs_region" placeholder="us-east-1" className="bg-secondary border-border" />
+      </div>
+      <p className="text-xs text-muted-foreground">Coleta: Tasks (running/desired/pending), CPU/Memory via CloudWatch, deployments.</p>
+    </div>
+  );
+}
+
+function CloudWatchAlarmsFields() {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Prefixo de Alarmes (opcional)</Label>
+          <Input name="cw_alarm_prefix" placeholder="prod-" className="bg-secondary border-border" />
+        </div>
+        <div className="space-y-2">
+          <Label>Região AWS</Label>
+          <Input name="cw_alarm_region" placeholder="us-east-1" className="bg-secondary border-border" />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Lista todos os alarmes CloudWatch. Filtre por prefixo para monitorar apenas alarmes específicos.</p>
+    </div>
+  );
+}
+
+function SystemctlFields() {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label>URL do Agente</Label>
+        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" />
+      </div>
+      <div className="space-y-2">
+        <Label>Serviços a Monitorar (separados por vírgula)</Label>
+        <Input name="systemctl_services" required placeholder="nginx, docker, postgresql, redis" className="bg-secondary border-border" />
+      </div>
+      <div className="space-y-2">
+        <Label>Endpoint do Agente (opcional)</Label>
+        <Input name="agent_endpoint" defaultValue="/systemctl" className="bg-secondary border-border font-mono text-xs" />
+      </div>
+      <div className="rounded-md border border-border bg-secondary/30 p-3">
+        <p className="text-xs text-muted-foreground">
+          ⚙️ <strong>Agente necessário:</strong> Instale o agente de monitoramento no servidor. Ele expõe um endpoint HTTP que retorna o status dos serviços via <code>systemctl</code>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ContainerFields() {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label>URL do Agente</Label>
+        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" />
+      </div>
+      <div className="space-y-2">
+        <Label>Endpoint do Agente (opcional)</Label>
+        <Input name="agent_endpoint" defaultValue="/containers" className="bg-secondary border-border font-mono text-xs" />
+      </div>
+      <div className="rounded-md border border-border bg-secondary/30 p-3">
+        <p className="text-xs text-muted-foreground">
+          🐳 <strong>Agente necessário:</strong> Instale o agente no host Docker. Ele consulta a Docker Engine API e retorna status, CPU, memória e rede de cada container.
+        </p>
+      </div>
     </div>
   );
 }

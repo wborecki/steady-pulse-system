@@ -182,6 +182,11 @@ export type Database = {
         | "cloudwatch"
         | "s3"
         | "airflow"
+        | "lambda"
+        | "ecs"
+        | "cloudwatch_alarms"
+        | "systemctl"
+        | "container"
       service_category:
         | "aws"
         | "database"
@@ -189,6 +194,7 @@ export type Database = {
         | "server"
         | "process"
         | "api"
+        | "container"
       service_status: "online" | "offline" | "warning" | "maintenance"
     }
     CompositeTypes: {
@@ -329,6 +335,11 @@ export const Constants = {
         "cloudwatch",
         "s3",
         "airflow",
+        "lambda",
+        "ecs",
+        "cloudwatch_alarms",
+        "systemctl",
+        "container",
       ],
       service_category: [
         "aws",
@@ -337,6 +348,7 @@ export const Constants = {
         "server",
         "process",
         "api",
+        "container",
       ],
       service_status: ["online", "offline", "warning", "maintenance"],
     },
