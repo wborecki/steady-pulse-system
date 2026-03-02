@@ -5,7 +5,7 @@ import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck }
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -426,6 +426,20 @@ const ServiceDetail = () => {
             <MetricCard label="Latência (p99)" value={latencyPercentiles.p99} unit="ms" color="text-destructive" />
             <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
           </>
+        ) : checkType === 'tcp' ? (
+          <>
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
+            <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
+          </>
+        ) : checkType === 'process' ? (
+          <>
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
+            <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
+          </>
         ) : isInfraType(checkType) ? (
           <>
             <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
@@ -454,6 +468,13 @@ const ServiceDetail = () => {
             <MetricCard label="Insuficiente" value={Number(service.disk)} unit="" color="text-warning" />
             <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
           </>
+        ) : checkType === 's3' ? (
+          <>
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
+            <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
+          </>
         ) : checkType === 'systemctl' ? (
           <>
             <MetricCard label="CPU Servidor" value={Number(service.cpu)} unit="%" color="text-primary" />
@@ -477,6 +498,117 @@ const ServiceDetail = () => {
           </>
         )}
       </div>
+
+      {/* SSL Certificate Info */}
+      {isHttpType(checkType) && (() => {
+        const sslInfo = (config as any)?._ssl_info;
+        if (!sslInfo || sslInfo.error) return null;
+        const daysLeft = sslInfo.days_until_expiry;
+        const isExpired = daysLeft !== null && daysLeft <= 0;
+        const isWarning = daysLeft !== null && daysLeft <= 30;
+        const isCritical = daysLeft !== null && daysLeft <= 7;
+        return (
+          <Card className="glass-card">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                {isExpired || isCritical ? <ShieldAlert className="h-4 w-4 text-destructive" /> : isWarning ? <ShieldAlert className="h-4 w-4 text-warning" /> : <ShieldCheck className="h-4 w-4 text-success" />}
+                <h3 className="font-heading font-semibold text-sm">Certificado SSL</h3>
+                <span className={`text-xs font-mono px-2 py-0.5 rounded ${isExpired ? 'bg-destructive/20 text-destructive' : isCritical ? 'bg-destructive/20 text-destructive' : isWarning ? 'bg-warning/20 text-warning' : 'bg-success/20 text-success'}`}>
+                  {isExpired ? 'EXPIRADO' : daysLeft !== null ? `${daysLeft} dias restantes` : 'Válido'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-mono">
+                <div><span className="text-muted-foreground">Emissor:</span> <span className="text-foreground">{sslInfo.issuer || 'N/A'}</span></div>
+                <div><span className="text-muted-foreground">Válido de:</span> <span className="text-foreground">{sslInfo.valid_from ? new Date(sslInfo.valid_from).toLocaleDateString('pt-BR') : 'N/A'}</span></div>
+                <div><span className="text-muted-foreground">Válido até:</span> <span className={`${isCritical ? 'text-destructive' : isWarning ? 'text-warning' : 'text-foreground'}`}>{sslInfo.valid_to ? new Date(sslInfo.valid_to).toLocaleDateString('pt-BR') : 'N/A'}</span></div>
+                <div><span className="text-muted-foreground">Dias restantes:</span> <span className={`font-bold ${isExpired ? 'text-destructive' : isCritical ? 'text-destructive' : isWarning ? 'text-warning' : 'text-success'}`}>{daysLeft ?? 'N/A'}</span></div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* TCP Connection Details */}
+      {checkType === 'tcp' && (() => {
+        const tcpConfig = config as any;
+        const onlineCount = history.filter(h => h.status === 'online').length;
+        const offlineCount = history.filter(h => h.status === 'offline').length;
+        const avgLatency = history.length > 0 ? Math.round(history.reduce((sum, h) => sum + (h.response_time ?? 0), 0) / history.length) : 0;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1"><Plug className="h-3 w-3 inline mr-1" />Endpoint</p>
+                  <p className="text-lg font-heading font-bold text-foreground">{tcpConfig.host}:{tcpConfig.port}</p>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Latência Média</p>
+                  <p className="text-2xl font-heading font-bold text-primary">{avgLatency}<span className="text-sm">ms</span></p>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Checks OK</p>
+                  <p className="text-2xl font-heading font-bold text-success">{onlineCount}</p>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Checks Falhos</p>
+                  <p className={`text-2xl font-heading font-bold ${offlineCount > 0 ? 'text-destructive' : 'text-success'}`}>{offlineCount}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CloudWatch/EC2 Details */}
+      {checkType === 'cloudwatch' && (() => {
+        const details = (config as any)?._cw_details || config;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
+              <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
+              <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Instância</p>
+                  <p className="text-lg font-heading font-bold text-foreground">{(details.instance_id as string) || 'N/A'}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{(details.metric_type as string) || 'EC2'} · {(details.region as string) || 'N/A'}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* S3 Details */}
+      {checkType === 's3' && (() => {
+        const s3Config = config as any;
+        return (
+          <div className="space-y-4">
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <HardDrive className="h-4 w-4 text-primary" />
+                  <h3 className="font-heading font-semibold text-sm">Bucket S3</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm font-mono">
+                  <div><span className="text-muted-foreground">Bucket:</span> <span className="text-foreground">{s3Config.bucket_name || 'N/A'}</span></div>
+                  <div><span className="text-muted-foreground">Região:</span> <span className="text-foreground">{s3Config.region || 'us-east-1'}</span></div>
+                  <div><span className="text-muted-foreground">Prefixo:</span> <span className="text-foreground">{s3Config.prefix || '/'}</span></div>
+                  <div><span className="text-muted-foreground">Status:</span> <span className={service.status === 'online' ? 'text-success' : 'text-destructive'}>{service.status === 'online' ? 'Acessível' : 'Inacessível'}</span></div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
 
       {/* Airflow-specific Details */}
       {isAirflowType(checkType) && (() => {
@@ -1210,21 +1342,47 @@ const ServiceDetail = () => {
       </div>
 
       {/* Resource History Charts */}
-      {(isInfraType(checkType) || isAirflowType(checkType) || isAgentType(checkType) || cpuHistory.length > 0) && (
-        <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
+      {(isInfraType(checkType) || isAirflowType(checkType) || isAgentType(checkType) || checkType === 'lambda' || checkType === 'ecs' || checkType === 'cloudwatch_alarms' || cpuHistory.length > 0) && (
+        <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) || checkType === 'cloudwatch_alarms' ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
           {cpuHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : checkType === 'postgresql' ? "Conexões (%)" : checkType === 'mongodb' ? "Conexões (%)" : checkType === 'systemctl' ? "CPU Servidor (%)" : checkType === 'container' ? "CPU Containers (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
+              <MetricsChart title={
+                isAirflowType(checkType) ? "Pool Utilization (%)" :
+                checkType === 'postgresql' ? "Conexões (%)" :
+                checkType === 'mongodb' ? "Conexões (%)" :
+                checkType === 'systemctl' ? "CPU Servidor (%)" :
+                checkType === 'container' ? "CPU Containers (%)" :
+                checkType === 'lambda' ? "Error Rate (%)" :
+                checkType === 'cloudwatch_alarms' ? "Alarmes Ativos" :
+                checkType === 'ecs' ? "CPU ECS (%)" :
+                "CPU (%)"
+              } data={cpuHistory} color={checkType === 'lambda' || checkType === 'cloudwatch_alarms' ? "hsl(0, 80%, 55%)" : "hsl(175, 80%, 50%)"} unit={checkType === 'cloudwatch_alarms' ? "" : "%"} />
             </div>
           )}
           {memHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : checkType === 'postgresql' ? "Cache Hit Ratio (%)" : checkType === 'mongodb' ? "Memória (%)" : checkType === 'systemctl' ? "RAM Servidor (%)" : checkType === 'container' ? "Memória Containers (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
+              <MetricsChart title={
+                isAirflowType(checkType) ? "DAG Success Rate (%)" :
+                checkType === 'postgresql' ? "Cache Hit Ratio (%)" :
+                checkType === 'mongodb' ? "Memória (%)" :
+                checkType === 'systemctl' ? "RAM Servidor (%)" :
+                checkType === 'container' ? "Memória Containers (%)" :
+                checkType === 'lambda' ? "Duration Avg (ms)" :
+                checkType === 'cloudwatch_alarms' ? "Alarmes OK" :
+                checkType === 'ecs' ? "Memória ECS (%)" :
+                "Memória (%)"
+              } data={memHistory} color="hsl(145, 65%, 45%)" unit={checkType === 'lambda' ? "ms" : checkType === 'cloudwatch_alarms' ? "" : "%"} />
             </div>
           )}
-          {diskHistory.length > 0 && !isAirflowType(checkType) && (
+          {diskHistory.length > 0 && !isAirflowType(checkType) && checkType !== 'cloudwatch_alarms' && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={checkType === 'sql_query' ? "Storage (%)" : isAgentType(checkType) ? "Disco Servidor (%)" : "Disco (%)"} data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
+              <MetricsChart title={
+                checkType === 'sql_query' ? "Storage (%)" :
+                isAgentType(checkType) ? "Disco Servidor (%)" :
+                checkType === 'lambda' ? "Throttles" :
+                checkType === 'ecs' ? "Disco (%)" :
+                "Disco (%)"
+              } data={diskHistory} color="hsl(38, 92%, 55%)" unit={checkType === 'lambda' ? "" : "%"} />
             </div>
           )}
         </div>
@@ -1267,12 +1425,31 @@ const ServiceDetail = () => {
                 <th className="p-3 text-left">Latência</th>
                 {isHttpType(checkType) && <th className="p-3 text-left">HTTP</th>}
                 {(isInfraType(checkType) || isDbType(checkType)) && <>
-                  <th className="p-3 text-left">{isDbType(checkType) ? 'CPU/Conn' : 'CPU'}</th>
-                  <th className="p-3 text-left">{isDbType(checkType) ? 'Cache/Mem' : 'MEM'}</th>
+                  <th className="p-3 text-left">{checkType === 'postgresql' ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
+                  <th className="p-3 text-left">{checkType === 'postgresql' ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
                 </>}
                 {isAirflowType(checkType) && <>
                   <th className="p-3 text-left">Pool</th>
                   <th className="p-3 text-left">Success</th>
+                </>}
+                {isAgentType(checkType) && <>
+                  <th className="p-3 text-left">{checkType === 'systemctl' ? 'CPU Srv' : 'CPU Cnt'}</th>
+                  <th className="p-3 text-left">{checkType === 'systemctl' ? 'RAM Srv' : 'Mem Cnt'}</th>
+                  <th className="p-3 text-left">Disco</th>
+                </>}
+                {checkType === 'lambda' && <>
+                  <th className="p-3 text-left">Err%</th>
+                  <th className="p-3 text-left">Duration</th>
+                  <th className="p-3 text-left">Throttle</th>
+                </>}
+                {checkType === 'cloudwatch_alarms' && <>
+                  <th className="p-3 text-left">Alarm</th>
+                  <th className="p-3 text-left">OK</th>
+                  <th className="p-3 text-left">Insuf.</th>
+                </>}
+                {checkType === 'ecs' && <>
+                  <th className="p-3 text-left">CPU</th>
+                  <th className="p-3 text-left">MEM</th>
                 </>}
                 <th className="p-3 text-left">Erro</th>
               </tr>
@@ -1294,12 +1471,31 @@ const ServiceDetail = () => {
                       <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
                       <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
                     </>}
+                    {isAgentType(checkType) && <>
+                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.disk != null ? `${Number(h.disk).toFixed(1)}%` : '-'}</td>
+                    </>}
+                    {checkType === 'lambda' && <>
+                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(0)}ms` : '-'}</td>
+                      <td className="p-3">{h.disk != null ? Number(h.disk) : '-'}</td>
+                    </>}
+                    {checkType === 'cloudwatch_alarms' && <>
+                      <td className="p-3"><span className={Number(h.cpu) > 0 ? 'text-destructive font-bold' : ''}>{h.cpu ?? '-'}</span></td>
+                      <td className="p-3"><span className="text-success">{h.memory ?? '-'}</span></td>
+                      <td className="p-3"><span className="text-warning">{h.disk ?? '-'}</span></td>
+                    </>}
+                    {checkType === 'ecs' && <>
+                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                    </>}
                     <td className="p-3 text-xs text-destructive truncate max-w-[200px]">{h.error_message || '-'}</td>
                   </tr>
                 );
               })}
               {filteredHistory.length === 0 && (
-                <tr><td colSpan={7} className="p-6 text-center text-muted-foreground text-xs">Nenhum registro encontrado</td></tr>
+                <tr><td colSpan={10} className="p-6 text-center text-muted-foreground text-xs">Nenhum registro encontrado</td></tr>
               )}
             </tbody>
           </table>
