@@ -1,11 +1,17 @@
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useService } from '@/hooks/useServices';
+import { useService, useUpdateService, useDeleteService } from '@/hooks/useServices';
 import { useHealthCheckHistory, useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 function MetricCard({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
@@ -22,12 +28,34 @@ function MetricCard({ label, value, unit, color }: { label: string; value: numbe
   );
 }
 
+const categoryLabels: Record<string, string> = {
+  aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
+  server: 'Servidores', process: 'Processos', api: 'APIs',
+};
+
 const ServiceDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data: service, isLoading } = useService(id);
-  const { data: history = [] } = useHealthCheckHistory(id);
+  const { data: history = [] } = useHealthCheckHistory(id, 100);
   const triggerCheck = useTriggerHealthCheck();
+  const updateService = useUpdateService();
+  const deleteService = useDeleteService();
+  const [editOpen, setEditOpen] = useState(false);
+
+  const responseTimeData = useMemo(() => {
+    return [...history].reverse().map(h => ({
+      time: new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      value: h.response_time ?? 0,
+    }));
+  }, [history]);
+
+  const statusData = useMemo(() => {
+    return [...history].reverse().map(h => ({
+      time: new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      value: h.status === 'online' ? 100 : h.status === 'warning' ? 50 : 0,
+    }));
+  }, [history]);
 
   const handleCheck = async () => {
     try {
@@ -35,6 +63,35 @@ const ServiceDetail = () => {
       toast.success('Health check executado!');
     } catch {
       toast.error('Erro ao executar check');
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteService.mutateAsync(id!);
+      toast.success('Serviço removido');
+      navigate('/services');
+    } catch {
+      toast.error('Erro ao remover serviço');
+    }
+  };
+
+  const handleEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    try {
+      await updateService.mutateAsync({
+        id: id!,
+        name: form.get('name') as string,
+        description: (form.get('description') as string) || '',
+        url: (form.get('url') as string) || null,
+        category: form.get('category') as string,
+        check_interval_seconds: Number(form.get('interval') || 60),
+      } as any);
+      toast.success('Serviço atualizado!');
+      setEditOpen(false);
+    } catch {
+      toast.error('Erro ao atualizar serviço');
     }
   };
 
@@ -72,10 +129,36 @@ const ServiceDetail = () => {
           </div>
           <p className="text-sm text-muted-foreground font-mono">{service.description}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleCheck} disabled={triggerCheck.isPending} className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
-          Verificar Agora
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+            <Pencil className="h-4 w-4" /> Editar
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" className="gap-2">
+                <Trash2 className="h-4 w-4" /> Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir serviço?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação é irreversível. Todos os health checks e alertas associados serão removidos.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Button variant="outline" size="sm" onClick={handleCheck} disabled={triggerCheck.isPending} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
+            Verificar Agora
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-4 text-sm font-mono text-muted-foreground">
@@ -90,6 +173,16 @@ const ServiceDetail = () => {
         <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
         <MetricCard label="Disco" value={Number(service.disk)} unit="%" color="text-warning" />
         <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
+      </div>
+
+      {/* Charts with real data */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="glass-card rounded-lg p-4">
+          <MetricsChart title="Latência (ms)" data={responseTimeData} color="hsl(175, 80%, 50%)" unit="ms" />
+        </div>
+        <div className="glass-card rounded-lg p-4">
+          <MetricsChart title="Disponibilidade (%)" data={statusData} color="hsl(145, 65%, 45%)" unit="%" />
+        </div>
       </div>
 
       {/* Health Check History */}
@@ -123,14 +216,52 @@ const ServiceDetail = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="glass-card rounded-lg p-4">
-          <MetricsChart title="CPU - Últimas 24h" dataKey="cpu" color="hsl(175, 80%, 50%)" />
-        </div>
-        <div className="glass-card rounded-lg p-4">
-          <MetricsChart title="Memória - Últimas 24h" dataKey="memory" color="hsl(145, 65%, 45%)" />
-        </div>
-      </div>
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Editar Serviço</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input name="name" defaultValue={service.name} required className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <Select name="category" defaultValue={service.category}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(categoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>URL</Label>
+              <Input name="url" defaultValue={service.url || ''} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Intervalo de verificação</Label>
+              <Select name="interval" defaultValue={String(service.check_interval_seconds)}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 segundos</SelectItem>
+                  <SelectItem value="60">1 minuto</SelectItem>
+                  <SelectItem value="300">5 minutos</SelectItem>
+                  <SelectItem value="600">10 minutos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input name="description" defaultValue={service.description} className="bg-secondary border-border" />
+            </div>
+            <Button type="submit" className="w-full" disabled={updateService.isPending}>
+              {updateService.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

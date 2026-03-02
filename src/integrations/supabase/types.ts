@@ -167,7 +167,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_uptime: { Args: { p_service_id: string }; Returns: number }
     }
     Enums: {
       alert_type: "critical" | "warning" | "info"

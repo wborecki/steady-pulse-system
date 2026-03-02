@@ -29,7 +29,7 @@ async function checkHttp(url: string): Promise<{
     clearTimeout(timeout);
     const response_time = Date.now() - start;
     const status_code = res.status;
-    await res.text(); // consume body
+    await res.text();
 
     if (status_code >= 200 && status_code < 400) {
       return {
@@ -93,7 +93,6 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Optional: check a single service by id
     const url = new URL(req.url);
     const serviceId = url.searchParams.get("service_id");
 
@@ -157,17 +156,24 @@ Deno.serve(async (req) => {
         error_message: checkResult.error_message,
       });
 
-      // Update service status
+      // Calculate uptime (% of online checks in last 24h)
+      const { data: uptimeData } = await supabase.rpc("calculate_uptime", {
+        p_service_id: service.id,
+      });
+      const uptime = uptimeData ?? 0;
+
+      // Update service status + uptime
       await supabase
         .from("services")
         .update({
           status: checkResult.status,
           response_time: checkResult.response_time,
           last_check: new Date().toISOString(),
+          uptime,
         })
         .eq("id", service.id);
 
-      // Create alert if status changed to offline
+      // Create alert if status changed
       if (checkResult.status === "offline" && service.status !== "offline") {
         await supabase.from("alerts").insert({
           service_id: service.id,
@@ -197,6 +203,7 @@ Deno.serve(async (req) => {
       results.push({
         service_id: service.id,
         name: service.name,
+        uptime,
         ...checkResult,
       });
     }

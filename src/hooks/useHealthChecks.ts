@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface DbHealthCheck {
@@ -33,7 +33,25 @@ export function useHealthCheckHistory(serviceId: string | undefined, limit = 50)
   });
 }
 
+export function useAllRecentHealthChecks() {
+  return useQuery({
+    queryKey: ['health_checks_recent'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('health_checks')
+        .select('*')
+        .order('checked_at', { ascending: true })
+        .gte('checked_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .limit(1000);
+      if (error) throw error;
+      return data as DbHealthCheck[];
+    },
+    refetchInterval: 30000,
+  });
+}
+
 export function useTriggerHealthCheck() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (serviceId?: string) => {
       const url = serviceId
@@ -48,6 +66,15 @@ export function useTriggerHealthCheck() {
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
+    },
+    onSuccess: (_, serviceId) => {
+      qc.invalidateQueries({ queryKey: ['services'] });
+      qc.invalidateQueries({ queryKey: ['alerts'] });
+      qc.invalidateQueries({ queryKey: ['health_checks'] });
+      qc.invalidateQueries({ queryKey: ['health_checks_recent'] });
+      if (serviceId) {
+        qc.invalidateQueries({ queryKey: ['service', serviceId] });
+      }
     },
   });
 }

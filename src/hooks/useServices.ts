@@ -72,6 +72,26 @@ export function useCreateService() {
   });
 }
 
+export function useUpdateService() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<DbService> & { id: string }) => {
+      const { data, error } = await supabase
+        .from('services')
+        .update(updates as any)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['services'] });
+      qc.invalidateQueries({ queryKey: ['service', vars.id] });
+    },
+  });
+}
+
 export function useDeleteService() {
   const qc = useQueryClient();
   return useMutation({
