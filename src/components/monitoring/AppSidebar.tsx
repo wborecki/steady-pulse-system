@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield } from 'lucide-react';
+import { Activity, LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3 } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/services', label: 'Serviços', icon: Server },
+  { path: '/reports', label: 'Relatórios', icon: BarChart3 },
   { path: '/alerts', label: 'Alertas', icon: Bell },
   { path: '/settings', label: 'Configurações', icon: Settings },
 ];

@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Services from "./pages/Services";
 import ServiceDetail from "./pages/ServiceDetail";
 import Alerts from "./pages/Alerts";
+import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/services" element={<Services />} />
             <Route path="/service/:id" element={<ServiceDetail />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
