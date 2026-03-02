@@ -175,7 +175,7 @@ export function AddServiceForm({ onSuccess }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+    <form onSubmit={handleSubmit} className="space-y-4 pr-1">
       {/* Nome */}
       <div className="space-y-2">
         <Label>Nome do Serviço</Label>
