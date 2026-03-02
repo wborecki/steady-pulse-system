@@ -227,31 +227,29 @@ const Index = () => {
       </div>
 
       {/* Top 5 Latency + Services + Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         {/* Top 5 Latency */}
-        <div className="space-y-3">
+        <div className="glass-card rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-warning" />
-            <h2 className="font-heading font-semibold text-lg">Top 5 Latência</h2>
+            <h2 className="font-heading font-semibold text-sm">Top 5 Latência</h2>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
             {topLatency.map((s, i) => (
-              <Card
+              <div
                 key={s.id}
-                className="glass-card p-3 cursor-pointer hover:border-primary/40 transition-all"
                 onClick={() => navigate(`/service/${s.id}`)}
+                className="flex items-center justify-between p-2.5 rounded-lg bg-card/60 border border-border cursor-pointer hover:border-primary/40 transition-all"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-mono text-muted-foreground w-4">#{i + 1}</span>
-                    <StatusIndicator status={s.status as any} size="sm" />
-                    <span className="text-sm font-mono truncate">{s.name}</span>
-                  </div>
-                  <span className={`text-sm font-heading font-bold tabular-nums ${s.response_time > 1000 ? 'text-destructive' : s.response_time > 500 ? 'text-warning' : 'text-foreground'}`}>
-                    {s.response_time}ms
-                  </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-mono text-muted-foreground w-4">#{i + 1}</span>
+                  <StatusIndicator status={s.status as any} size="sm" />
+                  <span className="text-xs font-mono truncate">{s.name}</span>
                 </div>
-              </Card>
+                <span className={`text-xs font-heading font-bold tabular-nums ${s.response_time > 1000 ? 'text-destructive' : s.response_time > 500 ? 'text-warning' : 'text-foreground'}`}>
+                  {s.response_time}ms
+                </span>
+              </div>
             ))}
             {topLatency.length === 0 && (
               <p className="text-center py-4 text-muted-foreground font-mono text-xs">Nenhum serviço</p>
@@ -259,69 +257,56 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Services List - compact cards for dashboard */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="font-heading font-semibold text-lg">Serviços</h2>
-            <div className="flex gap-1 flex-wrap">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2 py-1 rounded-md text-[10px] font-mono transition-all ${
-                    selectedCategory === cat
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {cat === 'all' ? 'Todos' : categoryLabels[cat] || cat}
-                </button>
-              ))}
-            </div>
+        {/* Services List */}
+        <div className="glass-card rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-heading font-semibold text-sm">Serviços</h2>
           </div>
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+          <div className="flex gap-1 overflow-x-auto whitespace-nowrap pb-1">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-2 py-1 rounded-md text-[10px] font-mono transition-all shrink-0 ${
+                  selectedCategory === cat
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {cat === 'all' ? 'Todos' : categoryLabels[cat] || cat}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
             {filteredServices.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground font-mono text-sm">Nenhum serviço cadastrado.</p>
+              <p className="text-center py-6 text-muted-foreground font-mono text-xs">Nenhum serviço cadastrado.</p>
             ) : (
               filteredServices.map(service => {
                 const timeSince = service.last_check
                   ? `${Math.round((Date.now() - new Date(service.last_check).getTime()) / 60000)}min`
                   : '--';
                 return (
-                  <Card
+                  <div
                     key={service.id}
-                    className="glass-card p-3 cursor-pointer hover:border-primary/40 transition-all"
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-card/60 border border-border cursor-pointer hover:border-primary/40 transition-all"
                     onClick={() => navigate(`/service/${service.id}`)}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="mt-1">
-                        <StatusIndicator status={service.status as any} size="sm" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-heading font-semibold text-sm truncate">{service.name}</h3>
-                        <p className="text-[10px] text-muted-foreground font-mono">
-                          {categoryLabels[service.category] || service.category}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono">
-                          {service.check_type && (
-                            <span className="text-muted-foreground">{checkTypeLabels[service.check_type] || service.check_type}</span>
-                          )}
-                          <span className={service.response_time > 500 ? 'text-warning' : 'text-foreground'}>
-                            {service.response_time}ms
-                          </span>
-                          <span className={Number(service.uptime) < 99 ? 'text-warning' : 'text-success'}>
-                            {Number(service.uptime).toFixed(1)}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono text-success bg-secondary">
-                          <Clock className="h-2.5 w-2.5" />
-                          {timeSince}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StatusIndicator status={service.status as any} size="sm" />
+                      <div className="min-w-0">
+                        <span className="text-xs font-mono truncate block">{service.name}</span>
+                        <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+                          <span>{categoryLabels[service.category] || service.category}</span>
+                          <span className={service.response_time > 500 ? 'text-warning' : ''}>{service.response_time}ms</span>
+                          <span className={Number(service.uptime) < 99 ? 'text-warning' : 'text-success'}>{Number(service.uptime).toFixed(1)}%</span>
                         </div>
                       </div>
                     </div>
-                  </Card>
+                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-secondary shrink-0">
+                      <Clock className="h-2.5 w-2.5" />
+                      {timeSince}
+                    </div>
+                  </div>
                 );
               })
             )}
@@ -329,13 +314,13 @@ const Index = () => {
         </div>
 
         {/* Alerts */}
-        <div className="space-y-3">
-          <h2 className="font-heading font-semibold text-lg">Alertas Recentes</h2>
-          <div className="space-y-2">
+        <div className="glass-card rounded-lg p-4 space-y-3">
+          <h2 className="font-heading font-semibold text-sm">Alertas Recentes</h2>
+          <div className="space-y-1.5 max-h-[360px] overflow-y-auto pr-1">
             {alerts.length === 0 ? (
               <p className="text-center py-4 text-muted-foreground font-mono text-xs">Nenhum alerta</p>
             ) : (
-              alerts.slice(0, 5).map(alert => (
+              alerts.slice(0, 8).map(alert => (
                 <AlertItem
                   key={alert.id}
                   alert={{
