@@ -102,6 +102,13 @@ if [ "$CHECK_DOCKER" = true ]; then
     log "Docker encontrado: $(docker --version | head -c 40)"
     if [ -S /var/run/docker.sock ]; then
       log "Docker socket disponível"
+      # Check socket permissions
+      if [ -r /var/run/docker.sock ]; then
+        log "Docker socket é legível"
+      else
+        warn "Docker socket sem permissão de leitura. Corrigindo..."
+        chmod 666 /var/run/docker.sock 2>/dev/null || warn "Não foi possível alterar permissões do Docker socket. Execute: sudo chmod 666 /var/run/docker.sock"
+      fi
     else
       warn "Docker socket não encontrado em /var/run/docker.sock"
     fi
@@ -219,6 +226,7 @@ echo -e "  ${BLUE}Endpoints disponíveis:${NC}"
 echo -e "    GET  /health      — Status do agente"
 echo -e "    POST /systemctl   — Status de serviços systemd"
 echo -e "    GET  /containers  — Status dos containers Docker"
+echo -e "    GET  /metrics     — Métricas do servidor (CPU, RAM, disco)"
 echo ""
 echo -e "  ${BLUE}Na plataforma, configure:${NC}"
 echo -e "    URL do Agente: http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'SEU_IP'):${AGENT_PORT}"

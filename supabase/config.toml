@@ -2,3 +2,6 @@ project_id = "bcdvbnzcrxgdtqnhpbzw"
 
 [functions.health-check]
 verify_jwt = false
+
+[functions.server-metrics]
+verify_jwt = false

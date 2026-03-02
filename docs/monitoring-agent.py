@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Monitoring Agent — lightweight HTTP server for systemctl & Docker metrics.
+Monitoring Agent — lightweight HTTP server for systemctl, Docker & server metrics.
 
 Usage:
     python3 monitoring-agent.py [--port 9100] [--token YOUR_SECRET_TOKEN]
@@ -11,30 +11,12 @@ Usage:
 
 Endpoints:
     POST /systemctl   — returns status of specified systemd services
-    GET  /containers  — returns Docker container stats
+    GET  /containers  — returns Docker container stats (auto-discovery)
+    GET  /metrics     — returns server metrics (CPU, RAM, disk, load average)
     GET  /health      — agent health check
 
 Install as systemd service:
-    sudo cp monitoring-agent.py /opt/monitoring-agent.py
-    sudo chmod +x /opt/monitoring-agent.py
-    sudo tee /etc/systemd/system/monitoring-agent.service << 'EOF'
-    [Unit]
-    Description=Monitoring Agent
-    After=network.target
-
-    [Service]
-    Type=simple
-    ExecStart=/usr/bin/python3 /opt/monitoring-agent.py --port 9100
-    Environment=AGENT_TOKEN=your_secret_token
-    Restart=always
-    RestartSec=5
-
-    [Install]
-    WantedBy=multi-user.target
-    EOF
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now monitoring-agent
+    curl -fsSL https://raw.githubusercontent.com/SEU_REPO/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
 """
 
 import argparse
@@ -50,7 +32,7 @@ import urllib.request
 # Configuration
 # ---------------------------------------------------------------------------
 
-AGENT_VERSION = "1.0.0"
+AGENT_VERSION = "2.0.0"
 
 
 def get_config():
@@ -61,6 +43,111 @@ def get_config():
 
 
 CONFIG = get_config()
+
+# ---------------------------------------------------------------------------
+# Server metrics helpers
+# ---------------------------------------------------------------------------
+
+
+def get_cpu_percent() -> float:
+    """Get CPU usage percentage from /proc/stat."""
+    try:
+        with open("/proc/stat") as f:
+            line1 = f.readline().split()
+        time.sleep(0.1)
+        with open("/proc/stat") as f:
+            line2 = f.readline().split()
+
+        vals1 = [int(x) for x in line1[1:]]
+        vals2 = [int(x) for x in line2[1:]]
+        idle1 = vals1[3] + (vals1[4] if len(vals1) > 4 else 0)
+        idle2 = vals2[3] + (vals2[4] if len(vals2) > 4 else 0)
+        total1 = sum(vals1)
+        total2 = sum(vals2)
+        total_diff = total2 - total1
+        idle_diff = idle2 - idle1
+        if total_diff == 0:
+            return 0.0
+        return round((1 - idle_diff / total_diff) * 100, 2)
+    except Exception:
+        return 0.0
+
+
+def get_memory_info() -> dict:
+    """Get memory info from /proc/meminfo."""
+    try:
+        info = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val = parts[1].strip().split()[0]
+                    info[key] = int(val)  # in kB
+
+        total = info.get("MemTotal", 0)
+        available = info.get("MemAvailable", 0)
+        used = total - available
+        return {
+            "total_mb": round(total / 1024, 2),
+            "used_mb": round(used / 1024, 2),
+            "available_mb": round(available / 1024, 2),
+            "percent": round((used / total) * 100, 2) if total > 0 else 0,
+        }
+    except Exception:
+        return {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percent": 0}
+
+
+def get_disk_info() -> list:
+    """Get disk usage via df command."""
+    try:
+        result = subprocess.run(
+            ["df", "-B1", "--output=target,size,used,avail,pcent", "-x", "tmpfs", "-x", "devtmpfs", "-x", "overlay"],
+            capture_output=True, text=True, timeout=5,
+        )
+        disks = []
+        for line in result.stdout.strip().split("\n")[1:]:
+            parts = line.split()
+            if len(parts) >= 5:
+                disks.append({
+                    "mount": parts[0],
+                    "total_gb": round(int(parts[1]) / (1024**3), 2),
+                    "used_gb": round(int(parts[2]) / (1024**3), 2),
+                    "available_gb": round(int(parts[3]) / (1024**3), 2),
+                    "percent": float(parts[4].replace("%", "")),
+                })
+        return disks
+    except Exception:
+        return []
+
+
+def get_load_average() -> dict:
+    """Get load average from /proc/loadavg."""
+    try:
+        with open("/proc/loadavg") as f:
+            parts = f.readline().split()
+        return {
+            "load_1": float(parts[0]),
+            "load_5": float(parts[1]),
+            "load_15": float(parts[2]),
+        }
+    except Exception:
+        return {"load_1": 0, "load_5": 0, "load_15": 0}
+
+
+def get_server_metrics() -> dict:
+    """Collect all server metrics."""
+    cpu_cores = os.cpu_count() or 1
+    return {
+        "cpu_percent": get_cpu_percent(),
+        "cpu_cores": cpu_cores,
+        "memory": get_memory_info(),
+        "disks": get_disk_info(),
+        "load_average": get_load_average(),
+        "hostname": socket.gethostname(),
+        "timestamp": time.time(),
+    }
+
 
 # ---------------------------------------------------------------------------
 # Systemctl helpers
@@ -81,14 +168,11 @@ def get_systemctl_unit(service_name: str) -> dict:
                 k, v = line.split("=", 1)
                 data[k.strip()] = v.strip()
 
-        # Calculate uptime
         uptime_seconds = None
         ts = data.get("ActiveEnterTimestamp", "")
         if ts and ts != "n/a" and ts != "":
             try:
                 from datetime import datetime
-                # systemctl outputs timestamps like "Mon 2025-01-01 12:00:00 UTC"
-                # Try multiple formats
                 for fmt in ["%a %Y-%m-%d %H:%M:%S %Z", "%a %Y-%m-%d %H:%M:%S %z"]:
                     try:
                         dt = datetime.strptime(ts, fmt)
@@ -124,23 +208,9 @@ def get_systemctl_unit(service_name: str) -> dict:
             "uptime_seconds": uptime_seconds,
         }
     except subprocess.TimeoutExpired:
-        return {
-            "name": service_name,
-            "active_state": "unknown",
-            "sub_state": "timeout",
-            "pid": None,
-            "memory_bytes": None,
-            "uptime_seconds": None,
-        }
+        return {"name": service_name, "active_state": "unknown", "sub_state": "timeout", "pid": None, "memory_bytes": None, "uptime_seconds": None}
     except FileNotFoundError:
-        return {
-            "name": service_name,
-            "active_state": "unknown",
-            "sub_state": "systemctl-not-found",
-            "pid": None,
-            "memory_bytes": None,
-            "uptime_seconds": None,
-        }
+        return {"name": service_name, "active_state": "unknown", "sub_state": "systemctl-not-found", "pid": None, "memory_bytes": None, "uptime_seconds": None}
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +239,6 @@ def docker_api_get(path: str, timeout: float = 10.0) -> dict | list | None:
             response += chunk
         sock.close()
 
-        # Split headers and body
         parts = response.split(b"\r\n\r\n", 1)
         if len(parts) < 2:
             return None
@@ -180,7 +249,7 @@ def docker_api_get(path: str, timeout: float = 10.0) -> dict | list | None:
 
 
 def get_containers() -> list[dict]:
-    """Get all containers with stats."""
+    """Get all containers with stats (auto-discovery)."""
     containers_raw = docker_api_get("/containers/json?all=true")
     if containers_raw is None:
         return []
@@ -191,12 +260,16 @@ def get_containers() -> list[dict]:
         image = c.get("Image", "unknown")
         status = c.get("Status", "unknown")
         state = c.get("State", "unknown")
+        created = c.get("Created", 0)
 
-        # Get health from inspect
+        # Get health + restart count from inspect
         health = None
+        restart_count = 0
         inspect = docker_api_get(f"/containers/{c['Id']}/json")
-        if inspect and inspect.get("State", {}).get("Health"):
-            health = inspect["State"]["Health"].get("Status")
+        if inspect:
+            if inspect.get("State", {}).get("Health"):
+                health = inspect["State"]["Health"].get("Status")
+            restart_count = inspect.get("RestartCount", 0)
 
         # Get stats (one-shot)
         cpu_percent = 0.0
@@ -208,7 +281,6 @@ def get_containers() -> list[dict]:
         if state == "running":
             stats = docker_api_get(f"/containers/{c['Id']}/stats?stream=false")
             if stats:
-                # CPU calculation
                 cpu_delta = (stats.get("cpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0) -
                              stats.get("precpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0))
                 system_delta = (stats.get("cpu_stats", {}).get("system_cpu_usage", 0) -
@@ -217,14 +289,12 @@ def get_containers() -> list[dict]:
                 if system_delta > 0:
                     cpu_percent = round((cpu_delta / system_delta) * num_cpus * 100, 2)
 
-                # Memory calculation
                 mem_usage = stats.get("memory_stats", {}).get("usage", 0)
                 mem_limit = stats.get("memory_stats", {}).get("limit", 1)
                 memory_mb = round(mem_usage / (1024 * 1024), 2)
                 if mem_limit > 0:
                     memory_percent = round((mem_usage / mem_limit) * 100, 2)
 
-                # Network
                 networks = stats.get("networks", {})
                 for iface in networks.values():
                     network_in_mb += iface.get("rx_bytes", 0)
@@ -243,6 +313,8 @@ def get_containers() -> list[dict]:
             "memory_mb": memory_mb,
             "network_in_mb": network_in_mb,
             "network_out_mb": network_out_mb,
+            "restart_count": restart_count,
+            "created": created,
         })
 
     return results
@@ -256,7 +328,6 @@ def get_containers() -> list[dict]:
 class AgentHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        # Suppress default logging, or customize here
         pass
 
     def send_json(self, data: dict, status: int = 200):
@@ -285,10 +356,14 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ok",
                 "version": AGENT_VERSION,
                 "timestamp": time.time(),
+                "endpoints": ["/health", "/systemctl", "/containers", "/metrics"],
             })
         elif self.path == "/containers":
             containers = get_containers()
             self.send_json({"containers": containers})
+        elif self.path == "/metrics":
+            metrics = get_server_metrics()
+            self.send_json(metrics)
         else:
             self.send_json({"error": "not found"}, 404)
 
@@ -326,6 +401,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 def main():
     server = http.server.HTTPServer(("0.0.0.0", CONFIG.port), AgentHandler)
     print(f"🚀 Monitoring Agent v{AGENT_VERSION} running on port {CONFIG.port}")
+    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics")
     if CONFIG.token:
         print(f"🔒 Authentication enabled (token required)")
     else:
