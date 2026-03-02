@@ -1,57 +1,75 @@
 
 
-## Sprint Completo - MonitorHub Funcional
+## Problem
 
-### Diagnóstico: O que falta
+Currently the form allows any combination of category + check_type (e.g. "API" + "SQL Server"), which makes no sense. There are also no fields for SSH credentials, HTTP auth headers, or database-specific credentials beyond connection strings.
 
-Analisei todo o codebase e identifiquei os seguintes problemas que impedem o sistema de funcionar de ponta a ponta:
+## Solution
 
-1. **MetricsChart usa dados mock** - Importa `generateMetrics` de `mockData.ts` em vez de usar dados reais do `health_checks`
-2. **Formulário de cadastro incompleto** - Falta campo para configuração TCP (host/port) quando o tipo de check é TCP
-3. **Sem edição de serviço** - Não é possível editar um serviço depois de criado
-4. **Sem exclusão de serviço** - O hook `useDeleteService` existe mas não é usado em nenhuma UI
-5. **Uptime nunca é calculado** - O campo `uptime` na tabela `services` fica sempre 0 porque a edge function não calcula
-6. **Foreign keys ausentes** - As tabelas `alerts` e `health_checks` não têm FK para `services`, o que pode causar dados órfãos
-7. **Gráficos no ServiceDetail usam mock** - Mesma situação do dashboard
-8. **Configurações (Settings) são demo** - Nenhuma configuração é salva
-9. **RLS policies permissivas** - Qualquer pessoa pode ler/alterar tudo (sem autenticação)
-10. **Cron job pode não estar configurado** - A migração do cron pode ter falhado se pg_cron/pg_net não estavam habilitados
+Refactor the service registration into a **category-driven form** where selecting a category auto-determines the available check types and shows only the relevant credential fields.
 
-### Sprint (em ordem de prioridade)
+### Category-to-Check-Type Mapping
 
-**1. Corrigir Foreign Keys no banco**
-- Adicionar FK de `health_checks.service_id` e `alerts.service_id` para `services.id` com `ON DELETE CASCADE`
+```text
+Category          Allowed Check Types        Auth Fields
+─────────────────────────────────────────────────────────────
+AWS               cloudwatch, s3             (uses backend secrets)
+Banco de Dados    sql_query, postgresql,     Connection string OR
+                  mongodb                    host/port/user/password/database
+Airflow           http                       URL + optional token/basic auth
+Servidores        tcp, process               Host/Port + SSH (user, password
+                                             or key, port 22)
+Processos         process                    Host + SSH credentials +
+                                             process name/PID
+APIs              http                       URL + method + headers +
+                                             basic auth or bearer token
+```
 
-**2. Calcular uptime na edge function**
-- Após salvar o health check, calcular o uptime como % de checks "online" das últimas 24h e atualizar o campo `uptime` no serviço
+### Implementation Steps
 
-**3. Gráficos com dados reais**
-- Refatorar `MetricsChart` para aceitar dados como prop (array de health_checks)
-- No Dashboard, buscar os últimos health checks agregados e passar para o gráfico
-- No ServiceDetail, usar o `useHealthCheckHistory` já existente para alimentar os gráficos
+**1. Extract form to dedicated component `src/components/monitoring/AddServiceForm.tsx`**
+- Move the entire `<form>` out of `Services.tsx` into a clean component
+- Keeps `Services.tsx` focused on the list/filter logic
 
-**4. Formulário de cadastro com campos dinâmicos**
-- Quando tipo = TCP, mostrar campos host e port que são salvos em `check_config`
-- Quando tipo = HTTP, mostrar campo URL (já existe)
-- Adicionar campo de intervalo de verificação (check_interval_seconds)
+**2. Define category-check mapping as a constant**
+```
+categoryCheckTypes = {
+  aws: ['cloudwatch', 's3'],
+  database: ['sql_query', 'postgresql', 'mongodb'],
+  airflow: ['http'],
+  server: ['tcp', 'process'],
+  process: ['process'],
+  api: ['http'],
+}
+```
+- When user picks a category, auto-select the first check type and filter the dropdown
+- If category only has one check type, hide the dropdown entirely
 
-**5. Editar e excluir serviço**
-- Criar hook `useUpdateService`
-- No ServiceDetail, adicionar botões de editar (abre dialog com form preenchido) e excluir (com confirmação)
-- Usar o `useDeleteService` existente
+**3. Add conditional authentication sections per check type**
 
-**6. Invalidar queries após health check**
-- Após `triggerCheck`, invalidar queries de `services`, `alerts` e `health_checks` para atualizar a UI imediatamente
+- **HTTP (`api`, `airflow`)**: URL, HTTP method (GET/POST/HEAD), optional auth type (None / Basic / Bearer), username/password or token, custom headers (key-value pairs), expected status code
+- **TCP + SSH (`server`)**: Host, Port, optional SSH toggle with username, auth method (password or private key), SSH port
+- **Process (`process`, `server`)**: Same SSH fields + process name or command to check
+- **Database (`sql_query`)**: Info box (uses backend Azure credentials)
+- **PostgreSQL**: Choice between connection string OR individual fields (host, port, database, username, password, SSL mode)
+- **MongoDB**: Choice between connection string OR individual fields (host, port, database, username, password, auth source)
+- **CloudWatch**: Resource type (EC2/RDS), Instance ID, Region (defaults from backend)
+- **S3**: Bucket name, Region, optional prefix path
 
-**7. Remover dependências de mockData**
-- Remover imports de `mockData.ts` do MetricsChart e qualquer outro componente
-- O arquivo `mockData.ts` pode ser mantido apenas para tipos/referência
+**4. Update `handleAddService` to map all new fields into `check_config`**
+- SSH credentials go into `check_config.ssh: { host, port, username, password?, private_key? }`
+- HTTP auth goes into `check_config.auth: { type, username?, password?, token?, headers? }`
+- Database individual fields go into `check_config` as `host`, `port`, `username`, `password`, `database`, `ssl_mode`
 
-### Detalhes Técnicos
+**5. Make dialog scrollable**
+- Add `max-h-[80vh] overflow-y-auto` to DialogContent since the form will be taller with more fields
 
-- **Migração SQL**: Uma migração para adicionar FKs e criar uma função `calculate_uptime` que conta checks online/total nas últimas 24h
-- **Edge function**: Adicionar chamada a `calculate_uptime` via RPC ou calcular inline após inserir health_check
-- **MetricsChart refactor**: Mudar de `generateMetrics()` para receber `data: {time, value}[]` como prop, removendo a dependência do mock
-- **useUpdateService**: Mutation similar ao `useCreateService` mas com `.update().eq('id', id)`
-- **Query invalidation**: No `useTriggerHealthCheck`, adicionar `onSuccess` que invalida `['services']`, `['alerts']`, `['health_checks']`
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/monitoring/AddServiceForm.tsx` | New component with category-driven form logic |
+| `src/pages/Services.tsx` | Remove inline form, import `AddServiceForm` |
+
+No database migration needed -- all new fields are stored in the existing `check_config` JSONB column.
 
