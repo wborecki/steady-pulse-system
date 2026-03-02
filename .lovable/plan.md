@@ -1,63 +1,79 @@
 
 
-## Plan: Dashboards contextuais por tipo de serviço
+## Analise do estado atual e proximos passos
 
-### Problema atual
-Apenas o Airflow tem um dashboard detalhado com informacoes especificas. Os outros tipos (Azure SQL, PostgreSQL, MongoDB, AWS) coletam detalhes ricos no backend mas nao persistem nem exibem na UI.
+### O que ja existe
+- **HTTP/TCP** — check basico de disponibilidade
+- **Azure SQL** — metricas detalhadas (IO, waits, conexoes)
+- **PostgreSQL** — metricas detalhadas (cache hit, top tables, transacoes)
+- **MongoDB** — metricas detalhadas (opcounters, memoria, conexoes)
+- **Airflow** — dashboard completo (DAGs, scheduler, pool, success rate)
+- **AWS CloudWatch (EC2/RDS)** — metricas via CloudWatch API
+- **AWS S3** — verificacao de bucket
+
+### Novos servicos solicitados
+
+#### 1. AWS Lambda
+- **Edge function**: `lambda-metrics/index.ts`
+- Usar CloudWatch API para coletar: Invocations, Errors, Duration (avg/p99), Throttles, ConcurrentExecutions
+- Persistir `_lambda_details` no `check_config`
+- **Dashboard**: cards de Invocations, Error Rate %, Duration P99, Throttles; grafico de invocacoes vs erros
+
+#### 2. AWS ECS (Fargate/EC2)
+- **Edge function**: `ecs-metrics/index.ts`
+- Usar ECS API (DescribeServices, DescribeTasks) + CloudWatch (CPUUtilization, MemoryUtilization)
+- Persistir `_ecs_details`: running/desired/pending tasks, deployments, CPU/MEM por service
+- **Dashboard**: cards de Running Tasks vs Desired, CPU %, MEM %; tabela de tasks com status; deployment info
+
+#### 3. CloudWatch Alarms
+- **Edge function**: `cloudwatch-alarms/index.ts`
+- Usar CloudWatch API (DescribeAlarms) para listar alarmes ativos
+- Persistir `_cw_alarms_details`: lista de alarmes com state, metric, threshold
+- **Dashboard**: tabela de alarmes com status (OK/ALARM/INSUFFICIENT_DATA), metrica, threshold
+
+#### 4. Systemctl (Servicos Linux)
+- **Edge function**: `systemctl-metrics/index.ts`
+- Como Edge Functions nao acessam servidores diretamente, usar **agente HTTP**: o servidor expoe um endpoint (ex: `:9100/systemctl`) que retorna status dos servicos via `systemctl is-active`
+- Config: `{ "agent_url": "http://server:9100", "services": ["nginx", "docker", "postgresql"] }`
+- Persistir `_systemctl_details`: lista de units com active/inactive/failed, memory, uptime
+- **Dashboard**: tabela de units com status badge, PID, memoria, uptime; card de resumo (X active, Y failed)
+
+#### 5. Docker/Container
+- **Edge function**: `container-metrics/index.ts`
+- Similar ao systemctl: depende de agente HTTP no host que expoe Docker API stats
+- Config: `{ "agent_url": "http://server:9100", "type": "docker" }`
+- Coleta via Docker Engine API: containers running, CPU %, MEM %, network I/O
+- Persistir `_container_details`: lista de containers com name, image, status, CPU, MEM, network
+- **Dashboard**: tabela de containers com status, CPU/MEM bars; cards de total running/stopped/unhealthy
 
 ### Mudancas necessarias
 
-#### 1. Persistir detalhes no backend (3 edge functions)
+#### Database migration
+- Adicionar novos valores ao enum `check_type`: `lambda`, `ecs`, `cloudwatch_alarms`, `systemctl`, `container`
+- Adicionar nova categoria `container` ao enum `service_category`
 
-Assim como o Airflow salva `_airflow_details` no `check_config`, fazer o mesmo para:
+#### Arquivos novos
+| Arquivo | Descricao |
+|---|---|
+| `supabase/functions/lambda-metrics/index.ts` | Metricas Lambda via CloudWatch |
+| `supabase/functions/ecs-metrics/index.ts` | Metricas ECS via ECS + CloudWatch API |
+| `supabase/functions/cloudwatch-alarms/index.ts` | Lista de alarmes CloudWatch |
+| `supabase/functions/systemctl-metrics/index.ts` | Status de units via agente HTTP |
+| `supabase/functions/container-metrics/index.ts` | Status de containers via agente HTTP |
 
-- **`azure-sql-metrics/index.ts`**: Salvar `_sql_details` com connections, top_waits, IO, sessions, storage no `check_config` do servico
-- **`postgresql-metrics/index.ts`**: Salvar `_pg_details` com connections, cache_hit_ratio, top_tables, transactions, replication_lag
-- **`mongodb-metrics/index.ts`**: Salvar `_mongo_details` com connections, memory, opcounters, network, db_stats, active_operations
+#### Arquivos modificados
+| Arquivo | Mudanca |
+|---|---|
+| `supabase/functions/health-check/index.ts` | Adicionar cases para lambda, ecs, cloudwatch_alarms, systemctl, container |
+| `supabase/config.toml` | -- nao editar, auto-gerenciado |
+| `src/components/monitoring/AddServiceForm.tsx` | Novos check types, categorias, e campos de config especificos |
+| `src/pages/ServiceDetail.tsx` | Dashboards contextuais para cada novo tipo |
 
-#### 2. Dashboard contextual na UI (`ServiceDetail.tsx`)
+### Nota sobre systemctl e containers
+Estes dependem de um **agente leve** rodando nos servidores monitorados, expondo metricas via HTTP. Isso e padrao de mercado (similar a Prometheus node_exporter). A edge function faz GET no agente e coleta os dados. O usuario precisa instalar o agente nos servidores. Posso fornecer um script de agente simples em Python/Bash como referencia.
 
-Adicionar secoes especificas apos os MetricCards, similar ao bloco Airflow existente:
-
-**Azure SQL**:
-- 3 cards: IO Data %, Log Write %, Workers %
-- Card de conexoes: ativas vs total sessoes
-- Top 5 Waits (tabela com wait_type, count, time)
-- Storage: usado vs alocado (MB)
-
-**PostgreSQL**:
-- 3 cards: Cache Hit Ratio, Replication Lag, Conexoes Ativas
-- Tabela de Top Tables (nome, tamanho, rows, dead tuples, bloat %)
-- Card de transacoes: commits, rollbacks, deadlocks
-- Tuplas: returned, fetched, inserted, updated, deleted
-
-**MongoDB**:
-- 3 cards: Conexoes (current/available), Memoria (resident/virtual MB), Ops Ativas
-- DB Stats: collections, objects, data size, storage size, indexes
-- Opcounters: insert, query, update, delete, getmore, command
-- Network: bytes in/out, requests
-
-**HTTP** (ja tem status codes, adicionar):
-- Percentis de latencia (p50/p95/p99) ja existem nos cards
-- Manter como esta
-
-**TCP/Infra**:
-- Manter CPU/Memory/Disk como esta
-
-#### 3. MetricCards contextuais
-
-Ajustar os 4 cards principais para cada tipo:
-- **SQL**: CPU %, Memory %, Storage %, Conexoes Ativas
-- **PostgreSQL**: Conexoes %, Cache Hit %, Latencia, Uptime
-- **MongoDB**: Conexoes %, Memoria %, Disco %, Ops Ativas
-
-#### 4. Historico de checks contextual
-
-Na tabela de historico, mostrar colunas relevantes por tipo (ex: para DB mostrar CPU/MEM, para HTTP mostrar status code).
-
-### Arquivos modificados
-- `supabase/functions/azure-sql-metrics/index.ts` — persistir `_sql_details`
-- `supabase/functions/postgresql-metrics/index.ts` — persistir `_pg_details`  
-- `supabase/functions/mongodb-metrics/index.ts` — persistir `_mongo_details`
-- `src/pages/ServiceDetail.tsx` — secoes de dashboard por tipo
+### Ordem de implementacao sugerida
+1. Lambda + ECS + CloudWatch Alarms (usam mesmas credenciais AWS ja configuradas)
+2. Systemctl + Container (dependem de agente, implementacao similar entre si)
+3. Dashboards contextuais para todos os 5 novos tipos
 
