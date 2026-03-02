@@ -18,33 +18,33 @@ interface MetricsResult {
   error_message: string | null;
 }
 
-async function collectMetrics(): Promise<MetricsResult> {
-  const host = Deno.env.get("AZURE_SQL_HOST");
-  const database = Deno.env.get("AZURE_SQL_DATABASE");
-  const user = Deno.env.get("AZURE_SQL_USER");
-  const password = Deno.env.get("AZURE_SQL_PASSWORD");
+async function collectMetrics(config: Record<string, unknown>): Promise<MetricsResult> {
+  // Read from check_config first, fall back to env vars for backward compatibility
+  const host = (config.host as string) || Deno.env.get("AZURE_SQL_HOST");
+  const database = (config.database as string) || Deno.env.get("AZURE_SQL_DATABASE");
+  const user = (config.username as string) || Deno.env.get("AZURE_SQL_USER");
+  const password = (config.password as string) || Deno.env.get("AZURE_SQL_PASSWORD");
 
   if (!host || !database || !user || !password) {
-    throw new Error("Azure SQL credentials not configured");
+    throw new Error("Azure SQL credentials not configured (check_config or env vars)");
   }
 
-  const config: sql.config = {
+  const sqlConfig: sql.config = {
     server: host,
     database,
     user,
     password,
     options: {
       encrypt: true,
-      trustServerCertificate: false,
+      trustServerCertificate: (config.trust_server_certificate as boolean) ?? false,
     },
     connectionTimeout: 15000,
     requestTimeout: 15000,
   };
 
-  const pool = await sql.connect(config);
+  const pool = await sql.connect(sqlConfig);
 
   try {
-    // 1. Resource stats (CPU, Memory, I/O) - last 1 minute
     const resourceStats = await pool.request().query(`
       SELECT TOP 1
         avg_cpu_percent,
@@ -57,7 +57,6 @@ async function collectMetrics(): Promise<MetricsResult> {
       ORDER BY end_time DESC
     `);
 
-    // 2. Database size / space usage
     const sizeStats = await pool.request().query(`
       SELECT
         SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8 / 1024) AS used_mb,
@@ -66,7 +65,6 @@ async function collectMetrics(): Promise<MetricsResult> {
       WHERE type_desc = 'ROWS'
     `);
 
-    // 3. Active connections
     const connStats = await pool.request().query(`
       SELECT COUNT(*) AS active_connections
       FROM sys.dm_exec_sessions
@@ -74,14 +72,12 @@ async function collectMetrics(): Promise<MetricsResult> {
         AND status = 'running'
     `);
 
-    // 4. Total sessions
     const sessionStats = await pool.request().query(`
       SELECT COUNT(*) AS total_sessions
       FROM sys.dm_exec_sessions
       WHERE is_user_process = 1
     `);
 
-    // 5. Top wait stats
     const waitStats = await pool.request().query(`
       SELECT TOP 5
         wait_type,
@@ -110,7 +106,6 @@ async function collectMetrics(): Promise<MetricsResult> {
         ? Math.round((size.used_mb / size.allocated_mb) * 100 * 100) / 100
         : 0;
 
-    // Determine status
     let status: "online" | "offline" | "warning" = "online";
     if (cpuPercent > 90 || memoryPercent > 90 || storagePercent > 95) {
       status = "warning";
@@ -121,7 +116,7 @@ async function collectMetrics(): Promise<MetricsResult> {
       memory_percent: Math.round(memoryPercent * 100) / 100,
       storage_percent: storagePercent,
       active_connections: conns.active_connections ?? 0,
-      avg_response_time: 0, // will be calculated from connection time
+      avg_response_time: 0,
       status,
       details: {
         avg_data_io_percent: resource.avg_data_io_percent ?? 0,
@@ -150,19 +145,30 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const serviceId = url.searchParams.get("service_id");
 
-    const start = Date.now();
-    const metrics = await collectMetrics();
-    const responseTime = Date.now() - start;
-    metrics.avg_response_time = responseTime;
-
-    // Save to Supabase
+    let config: Record<string, unknown> = {};
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     if (serviceId) {
-      // Save health check with real metrics
+      const { data: svc } = await supabase.from("services").select("check_config").eq("id", serviceId).single();
+      config = (svc?.check_config as Record<string, unknown>) || {};
+    }
+
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        if (body.config) config = { ...config, ...body.config };
+      } catch { /* no body */ }
+    }
+
+    const start = Date.now();
+    const metrics = await collectMetrics(config);
+    const responseTime = Date.now() - start;
+    metrics.avg_response_time = responseTime;
+
+    if (serviceId) {
       await supabase.from("health_checks").insert({
         service_id: serviceId,
         status: metrics.status,
@@ -173,12 +179,10 @@ Deno.serve(async (req) => {
         error_message: metrics.error_message,
       });
 
-      // Calculate uptime
       const { data: uptimeData } = await supabase.rpc("calculate_uptime", {
         p_service_id: serviceId,
       });
 
-      // Update service
       await supabase
         .from("services")
         .update({
@@ -194,26 +198,14 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        response_time: responseTime,
-        metrics,
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: true, response_time: responseTime, metrics }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("Azure SQL metrics error:", err);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: err.message,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

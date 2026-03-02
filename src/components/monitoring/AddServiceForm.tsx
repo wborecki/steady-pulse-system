@@ -17,7 +17,7 @@ const categoryLabels: Record<string, string> = {
 const categoryCheckTypes: Record<string, string[]> = {
   aws: ['cloudwatch', 's3'],
   database: ['sql_query', 'postgresql', 'mongodb'],
-  airflow: ['http'],
+  airflow: ['airflow'],
   server: ['tcp', 'process'],
   process: ['process'],
   api: ['http'],
@@ -32,6 +32,7 @@ const checkTypeLabels: Record<string, string> = {
   cloudwatch: 'AWS CloudWatch',
   s3: 'AWS S3',
   process: 'Processo',
+  airflow: 'Apache Airflow',
 };
 
 interface ServiceFormData {
@@ -120,8 +121,22 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         }
         break;
       }
-      case 'sql_query':
+      case 'sql_query': {
+        if (dbInputMode === 'connection_string') {
+          const connStr = form.get('mssql_connection_string') as string;
+          // Parse connection string into fields
+          checkConfig = { connection_string: connStr };
+        } else {
+          checkConfig = {
+            host: form.get('db_host') as string,
+            database: form.get('db_name') as string,
+            username: form.get('db_username') as string,
+            password: form.get('db_password') as string,
+            trust_server_certificate: (form.get('db_trust_cert') as string) === 'on',
+          };
+        }
         break;
+      }
       case 'postgresql': {
         if (dbInputMode === 'connection_string') {
           checkConfig = { connection_string: form.get('pg_connection_string') as string };
@@ -167,6 +182,13 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           bucket_name: form.get('s3_bucket') as string,
           region: (form.get('s3_region') as string) || undefined,
           prefix: (form.get('s3_prefix') as string) || undefined,
+        };
+        break;
+      case 'airflow':
+        checkConfig = {
+          base_url: form.get('airflow_url') as string,
+          username: form.get('airflow_username') as string,
+          password: form.get('airflow_password') as string,
         };
         break;
     }
@@ -250,13 +272,11 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       {/* Process fields */}
       {checkType === 'process' && <ProcessFields category={category} sshEnabled={sshEnabled} setSshEnabled={setSshEnabled} sshAuthMethod={sshAuthMethod} setSshAuthMethod={setSshAuthMethod} />}
 
-      {/* SQL Query info */}
-      {checkType === 'sql_query' && (
-        <div className="rounded-md border border-border bg-secondary/50 p-3 text-sm text-muted-foreground">
-          <p className="font-medium text-foreground mb-1">📊 Azure SQL Server</p>
-          <p>Usa as credenciais configuradas no backend. Coleta CPU, Memória, Conexões e Top Waits via DMVs.</p>
-        </div>
-      )}
+      {/* SQL Server fields */}
+      {checkType === 'sql_query' && <SqlServerFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
+
+      {/* Airflow fields */}
+      {checkType === 'airflow' && <AirflowFields />}
 
       {/* PostgreSQL fields */}
       {checkType === 'postgresql' && <PostgresFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
@@ -650,6 +670,70 @@ function S3Fields() {
         <Input name="s3_prefix" placeholder="logs/2024/" className="bg-secondary border-border" />
       </div>
       <p className="text-xs text-muted-foreground">Usa credenciais AWS do backend. Verifica acessibilidade do bucket.</p>
+    </div>
+  );
+}
+
+function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
+  return (
+    <div className="space-y-3">
+      <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
+      {dbInputMode === 'connection_string' ? (
+        <div className="space-y-2">
+          <Label>Connection String</Label>
+          <Input name="mssql_connection_string" required placeholder="Server=host;Database=db;User Id=user;Password=pass;" className="bg-secondary border-border font-mono text-xs" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Host / Server</Label>
+              <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Database</Label>
+              <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Usuário</Label>
+              <Input name="db_username" required className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Senha</Label>
+              <Input name="db_password" type="password" required className="bg-secondary border-border" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" name="db_trust_cert" id="db_trust_cert" className="rounded border-border" />
+            <Label htmlFor="db_trust_cert" className="text-xs">Trust Server Certificate</Label>
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Coleta: CPU, Memória, Conexões, Storage e Top Waits via DMVs.</p>
+    </div>
+  );
+}
+
+function AirflowFields() {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label>URL do Airflow</Label>
+        <Input name="airflow_url" required placeholder="https://airflow.empresa.com" className="bg-secondary border-border" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Usuário</Label>
+          <Input name="airflow_username" required placeholder="admin" className="bg-secondary border-border" />
+        </div>
+        <div className="space-y-2">
+          <Label>Senha</Label>
+          <Input name="airflow_password" type="password" required placeholder="••••••••" className="bg-secondary border-border" />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Coleta: Health do Scheduler, DAGs (ativas/pausadas), DAG Runs (sucesso/falha), Import Errors, Pool Utilization.</p>
     </div>
   );
 }

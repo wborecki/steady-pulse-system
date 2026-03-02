@@ -181,6 +181,7 @@ export type Database = {
         | "mongodb"
         | "cloudwatch"
         | "s3"
+        | "airflow"
       service_category:
         | "aws"
         | "database"
@@ -327,6 +328,7 @@ export const Constants = {
         "mongodb",
         "cloudwatch",
         "s3",
+        "airflow",
       ],
       service_category: [
         "aws",
