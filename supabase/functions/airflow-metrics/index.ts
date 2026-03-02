@@ -228,6 +228,10 @@ Deno.serve(async (req) => {
 
       const { data: uptimeData } = await supabase.rpc("calculate_uptime", { p_service_id: serviceId });
 
+      // Persist airflow details in check_config for UI display
+      const { data: svcCurrent } = await supabase.from("services").select("check_config").eq("id", serviceId).single();
+      const existingConfig = (svcCurrent?.check_config as Record<string, unknown>) || {};
+
       await supabase.from("services").update({
         status: metrics.status,
         response_time: metrics.response_time,
@@ -236,6 +240,11 @@ Deno.serve(async (req) => {
         disk: metrics.disk,
         last_check: new Date().toISOString(),
         uptime: uptimeData ?? 0,
+        check_config: {
+          ...existingConfig,
+          _airflow_details: metrics.details,
+          _last_metrics_at: new Date().toISOString(),
+        },
       }).eq("id", serviceId);
     }
 
