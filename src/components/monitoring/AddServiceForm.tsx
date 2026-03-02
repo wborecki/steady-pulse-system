@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { useCreateService } from '@/hooks/useServices';
+import { useCreateService, useUpdateService } from '@/hooks/useServices';
 import { toast } from 'sonner';
 import { Minus, Plus } from 'lucide-react';
 
@@ -34,14 +34,28 @@ const checkTypeLabels: Record<string, string> = {
   process: 'Processo',
 };
 
-interface Props {
-  onSuccess: () => void;
+interface ServiceFormData {
+  id?: string;
+  name: string;
+  category: string;
+  check_type: string;
+  url?: string | null;
+  description?: string;
+  check_config?: Record<string, unknown>;
+  check_interval_seconds?: number;
 }
 
-export function AddServiceForm({ onSuccess }: Props) {
+interface Props {
+  onSuccess: () => void;
+  initialData?: ServiceFormData;
+  mode?: 'create' | 'edit';
+}
+
+export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Props) {
   const createService = useCreateService();
-  const [category, setCategory] = useState('server');
-  const [checkType, setCheckType] = useState('tcp');
+  const updateService = useUpdateService();
+  const [category, setCategory] = useState(initialData?.category || 'server');
+  const [checkType, setCheckType] = useState(initialData?.check_type || 'tcp');
   const [httpAuthType, setHttpAuthType] = useState('none');
   const [sshEnabled, setSshEnabled] = useState(false);
   const [sshAuthMethod, setSshAuthMethod] = useState<'password' | 'key'>('password');
@@ -157,20 +171,27 @@ export function AddServiceForm({ onSuccess }: Props) {
         break;
     }
 
+    const serviceData = {
+      name: form.get('name') as string,
+      category,
+      url,
+      description: (form.get('description') as string) || '',
+      check_type: checkType,
+      check_config: checkConfig,
+      check_interval_seconds: Number(form.get('interval') || 60),
+    };
+
     try {
-      await createService.mutateAsync({
-        name: form.get('name') as string,
-        category,
-        url,
-        description: (form.get('description') as string) || '',
-        check_type: checkType,
-        check_config: checkConfig,
-        check_interval_seconds: Number(form.get('interval') || 60),
-      } as any);
-      toast.success('Serviço adicionado!');
+      if (mode === 'edit' && initialData?.id) {
+        await updateService.mutateAsync({ id: initialData.id, ...serviceData } as any);
+        toast.success('Serviço atualizado!');
+      } else {
+        await createService.mutateAsync(serviceData as any);
+        toast.success('Serviço adicionado!');
+      }
       onSuccess();
     } catch {
-      toast.error('Erro ao adicionar serviço');
+      toast.error(mode === 'edit' ? 'Erro ao atualizar serviço' : 'Erro ao adicionar serviço');
     }
   };
 
@@ -179,7 +200,7 @@ export function AddServiceForm({ onSuccess }: Props) {
       {/* Nome */}
       <div className="space-y-2">
         <Label>Nome do Serviço</Label>
-        <Input name="name" required placeholder="Ex: EC2 - Produção" className="bg-secondary border-border" />
+        <Input name="name" required defaultValue={initialData?.name || ''} placeholder="Ex: EC2 - Produção" className="bg-secondary border-border" />
       </div>
 
       {/* Categoria + Check Type */}
@@ -252,7 +273,7 @@ export function AddServiceForm({ onSuccess }: Props) {
       {/* Interval */}
       <div className="space-y-2">
         <Label>Intervalo de verificação</Label>
-        <Select name="interval" defaultValue="60">
+        <Select name="interval" defaultValue={String(initialData?.check_interval_seconds || 60)}>
           <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="30">30 segundos</SelectItem>
@@ -266,11 +287,11 @@ export function AddServiceForm({ onSuccess }: Props) {
       {/* Description */}
       <div className="space-y-2">
         <Label>Descrição</Label>
-        <Input name="description" placeholder="Descrição do serviço" className="bg-secondary border-border" />
+        <Input name="description" defaultValue={initialData?.description || ''} placeholder="Descrição do serviço" className="bg-secondary border-border" />
       </div>
 
-      <Button type="submit" className="w-full" disabled={createService.isPending}>
-        {createService.isPending ? 'Adicionando...' : 'Adicionar'}
+      <Button type="submit" className="w-full" disabled={createService.isPending || updateService.isPending}>
+        {(createService.isPending || updateService.isPending) ? (mode === 'edit' ? 'Salvando...' : 'Adicionando...') : (mode === 'edit' ? 'Salvar' : 'Adicionar')}
       </Button>
     </form>
   );
