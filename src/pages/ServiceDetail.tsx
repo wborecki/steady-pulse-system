@@ -286,6 +286,27 @@ const ServiceDetail = () => {
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
             <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
           </>
+        ) : checkType === 'sql_query' ? (
+          <>
+            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Storage" value={Number(service.disk)} unit="%" color="text-warning" />
+            <MetricCard label="Conexões Ativas" value={(config._sql_details as any)?.active_connections ?? 0} unit="" color="text-foreground" />
+          </>
+        ) : checkType === 'postgresql' ? (
+          <>
+            <MetricCard label="Conexões %" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Cache Hit" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+          </>
+        ) : checkType === 'mongodb' ? (
+          <>
+            <MetricCard label="Conexões %" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Memória %" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Disco %" value={Number(service.disk)} unit="%" color="text-warning" />
+            <MetricCard label="Ops Ativas" value={(config._mongo_details as any)?.active_operations ?? 0} unit="" color="text-foreground" />
+          </>
         ) : isHttpType(checkType) ? (
           <>
             <MetricCard label="Latência (p50)" value={latencyPercentiles.p50} unit="ms" color="text-primary" />
@@ -428,6 +449,303 @@ const ServiceDetail = () => {
         );
       })()}
 
+      {/* Azure SQL Details */}
+      {checkType === 'sql_query' && (() => {
+        const details = (config as any)?._sql_details;
+        if (!details) return null;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="IO Data" value={details.avg_data_io_percent ?? 0} unit="%" color="text-primary" />
+              <MetricCard label="Log Write" value={details.avg_log_write_percent ?? 0} unit="%" color="text-warning" />
+              <MetricCard label="Workers" value={details.max_worker_percent ?? 0} unit="%" color="text-success" />
+              <MetricCard label="Sessions" value={details.max_session_percent ?? 0} unit="%" color="text-foreground" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Conexões</h3>
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-primary">{details.active_connections ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground">Ativas</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-foreground">{details.total_sessions ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground">Total Sessões</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Storage</h3>
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-warning">{details.used_mb ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground">Usado (MB)</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-foreground">{details.allocated_mb ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground">Alocado (MB)</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-warning" style={{ width: `${details.allocated_mb ? Math.round((details.used_mb / details.allocated_mb) * 100) : 0}%` }} />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            {details.top_waits?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Top 5 Waits</h3>
+                  <table className="w-full text-sm font-mono">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="p-2 text-left">Wait Type</th>
+                        <th className="p-2 text-right">Count</th>
+                        <th className="p-2 text-right">Time (ms)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {details.top_waits.map((w: any, i: number) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="p-2 text-xs">{w.wait_type}</td>
+                          <td className="p-2 text-right">{w.waiting_tasks_count?.toLocaleString()}</td>
+                          <td className="p-2 text-right">{w.wait_time_ms?.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* PostgreSQL Details */}
+      {checkType === 'postgresql' && (() => {
+        const details = (config as any)?._pg_details;
+        if (!details) return null;
+        const conns = details.connections || {};
+        const tx = details.transactions || {};
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Cache Hit Ratio" value={details.cache_hit_ratio ?? 0} unit="%" color="text-success" />
+              <MetricCard label="Repl. Lag" value={details.replication_lag_seconds ?? 0} unit="s" color="text-warning" />
+              <MetricCard label="Conexões Ativas" value={conns.active ?? 0} unit="" color="text-primary" />
+              <MetricCard label="DB Size" value={details.db_size || '0'} unit="" color="text-foreground" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Conexões</h3>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    {[
+                      { label: 'Total', value: conns.total, color: 'text-foreground' },
+                      { label: 'Ativas', value: conns.active, color: 'text-primary' },
+                      { label: 'Idle', value: conns.idle, color: 'text-muted-foreground' },
+                      { label: 'Waiting', value: conns.waiting, color: 'text-warning' },
+                    ].map(c => (
+                      <div key={c.label}>
+                        <p className={`text-xl font-heading font-bold ${c.color}`}>{c.value ?? 0}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{c.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Transações</h3>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-xl font-heading font-bold text-success">{Number(tx.xact_commit ?? 0).toLocaleString()}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Commits</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-heading font-bold text-destructive">{Number(tx.xact_rollback ?? 0).toLocaleString()}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Rollbacks</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-heading font-bold text-warning">{Number(tx.deadlocks ?? 0).toLocaleString()}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Deadlocks</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            {details.top_tables?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Top Tables</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="p-2 text-left">Tabela</th>
+                          <th className="p-2 text-right">Tamanho</th>
+                          <th className="p-2 text-right">Rows</th>
+                          <th className="p-2 text-right">Dead Tuples</th>
+                          <th className="p-2 text-right">Bloat %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.top_tables.map((t: any, i: number) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="p-2 text-xs">{t.schemaname}.{t.relname}</td>
+                            <td className="p-2 text-right text-xs">{t.total_size}</td>
+                            <td className="p-2 text-right">{Number(t.row_count ?? 0).toLocaleString()}</td>
+                            <td className="p-2 text-right">{Number(t.dead_tuples ?? 0).toLocaleString()}</td>
+                            <td className="p-2 text-right">{t.bloat_percent}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">Tuplas</h3>
+                <div className="grid grid-cols-5 gap-2 text-center">
+                  {[
+                    { label: 'Returned', value: tx.tup_returned },
+                    { label: 'Fetched', value: tx.tup_fetched },
+                    { label: 'Inserted', value: tx.tup_inserted },
+                    { label: 'Updated', value: tx.tup_updated },
+                    { label: 'Deleted', value: tx.tup_deleted },
+                  ].map(t => (
+                    <div key={t.label}>
+                      <p className="text-lg font-heading font-bold text-foreground">{Number(t.value ?? 0).toLocaleString()}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">{t.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
+      {/* MongoDB Details */}
+      {checkType === 'mongodb' && (() => {
+        const details = (config as any)?._mongo_details;
+        if (!details) return null;
+        const conns = details.connections || {};
+        const mem = details.memory || {};
+        const ops = details.opcounters || {};
+        const net = details.network || {};
+        const dbStats = details.db_stats || {};
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Conexões</h3>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-primary">{conns.current ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Current</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-foreground">{conns.available ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Available</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Memória</h3>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-success">{mem.resident_mb ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Resident MB</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-foreground">{mem.virtual_mb ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Virtual MB</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Ops Ativas</p>
+                  <p className="text-3xl font-heading font-bold text-warning">{details.active_operations ?? 0}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">Uptime: {details.uptime_seconds ? `${Math.round(details.uptime_seconds / 3600)}h` : 'N/A'}</p>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">DB Stats ({dbStats.db || 'N/A'})</h3>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {[
+                      { label: 'Collections', value: dbStats.collections },
+                      { label: 'Objects', value: dbStats.objects },
+                      { label: 'Indexes', value: dbStats.indexes },
+                      { label: 'Data (MB)', value: dbStats.data_size_mb },
+                      { label: 'Storage (MB)', value: dbStats.storage_size_mb },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <p className="text-xl font-heading font-bold text-foreground">{Number(s.value ?? 0).toLocaleString()}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Opcounters</h3>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {[
+                      { label: 'Insert', value: ops.insert },
+                      { label: 'Query', value: ops.query },
+                      { label: 'Update', value: ops.update },
+                      { label: 'Delete', value: ops.delete },
+                      { label: 'Getmore', value: ops.getmore },
+                      { label: 'Command', value: ops.command },
+                    ].map(o => (
+                      <div key={o.label}>
+                        <p className="text-lg font-heading font-bold text-foreground">{Number(o.value ?? 0).toLocaleString()}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{o.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">Network</h3>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-xl font-heading font-bold text-primary">{net.bytes_in ? `${(net.bytes_in / 1024 / 1024).toFixed(1)}` : '0'}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Bytes In (MB)</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-heading font-bold text-success">{net.bytes_out ? `${(net.bytes_out / 1024 / 1024).toFixed(1)}` : '0'}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Bytes Out (MB)</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-heading font-bold text-foreground">{Number(net.num_requests ?? 0).toLocaleString()}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Requests</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* HTTP-specific: Status Code Distribution */}
       {isHttpType(checkType) && history.length > 0 && (
         <Card className="glass-card">
@@ -470,17 +788,17 @@ const ServiceDetail = () => {
         <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
           {cpuHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : checkType === 'postgresql' ? "Conexões (%)" : checkType === 'mongodb' ? "Conexões (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />
             </div>
           )}
           {memHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
+              <MetricsChart title={isAirflowType(checkType) ? "DAG Success Rate (%)" : checkType === 'postgresql' ? "Cache Hit Ratio (%)" : checkType === 'mongodb' ? "Memória (%)" : "Memória (%)"} data={memHistory} color="hsl(145, 65%, 45%)" unit="%" />
             </div>
           )}
           {diskHistory.length > 0 && !isAirflowType(checkType) && (
             <div className="glass-card rounded-lg p-4">
-              <MetricsChart title="Disco (%)" data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
+              <MetricsChart title={checkType === 'sql_query' ? "Storage (%)" : checkType === 'mongodb' ? "Disco (%)" : "Disco (%)"} data={diskHistory} color="hsl(38, 92%, 55%)" unit="%" />
             </div>
           )}
         </div>
@@ -521,10 +839,14 @@ const ServiceDetail = () => {
                 <th className="p-3 text-left">Horário</th>
                 <th className="p-3 text-left">Status</th>
                 <th className="p-3 text-left">Latência</th>
-                <th className="p-3 text-left">HTTP</th>
-                {isInfraType(checkType) && <>
-                  <th className="p-3 text-left">CPU</th>
-                  <th className="p-3 text-left">MEM</th>
+                {isHttpType(checkType) && <th className="p-3 text-left">HTTP</th>}
+                {(isInfraType(checkType) || isDbType(checkType)) && <>
+                  <th className="p-3 text-left">{isDbType(checkType) ? 'CPU/Conn' : 'CPU'}</th>
+                  <th className="p-3 text-left">{isDbType(checkType) ? 'Cache/Mem' : 'MEM'}</th>
+                </>}
+                {isAirflowType(checkType) && <>
+                  <th className="p-3 text-left">Pool</th>
+                  <th className="p-3 text-left">Success</th>
                 </>}
                 <th className="p-3 text-left">Erro</th>
               </tr>
@@ -537,17 +859,21 @@ const ServiceDetail = () => {
                     <td className="p-3 text-xs">{new Date(h.checked_at).toLocaleString('pt-BR')}</td>
                     <td className="p-3"><StatusIndicator status={h.status as any} size="sm" showLabel /></td>
                     <td className="p-3">{h.response_time}ms</td>
-                    <td className="p-3">{h.status_code || '-'}</td>
-                    {isInfraType(checkType) && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(0)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(0)}%` : '-'}</td>
+                    {isHttpType(checkType) && <td className="p-3">{h.status_code || '-'}</td>}
+                    {(isInfraType(checkType) || isDbType(checkType)) && <>
+                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                    </>}
+                    {isAirflowType(checkType) && <>
+                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
                     </>}
                     <td className="p-3 text-xs text-destructive truncate max-w-[200px]">{h.error_message || '-'}</td>
                   </tr>
                 );
               })}
               {filteredHistory.length === 0 && (
-                <tr><td colSpan={isInfraType(checkType) ? 7 : 5} className="p-6 text-center text-muted-foreground text-xs">Nenhum registro encontrado</td></tr>
+                <tr><td colSpan={7} className="p-6 text-center text-muted-foreground text-xs">Nenhum registro encontrado</td></tr>
               )}
             </tbody>
           </table>

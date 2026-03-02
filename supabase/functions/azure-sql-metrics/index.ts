@@ -183,6 +183,9 @@ Deno.serve(async (req) => {
         p_service_id: serviceId,
       });
 
+      // Persist _sql_details in check_config (like Airflow does)
+      const updatedConfig = { ...config, _sql_details: metrics.details };
+
       await supabase
         .from("services")
         .update({
@@ -193,6 +196,7 @@ Deno.serve(async (req) => {
           disk: metrics.storage_percent,
           last_check: new Date().toISOString(),
           uptime: uptimeData ?? 0,
+          check_config: updatedConfig,
         })
         .eq("id", serviceId);
     }
