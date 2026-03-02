@@ -1,28 +1,43 @@
 
 
-## Plano: Criar agente de monitoramento para servidor
+## Plano: Agente Unificado — Uma Instalação, Tudo Funcionando
 
-### Situacao atual
-Toda a infraestrutura do lado da plataforma ja esta pronta: edge functions (`systemctl-metrics`, `container-metrics`), formularios de configuracao, e dashboards contextuais. Falta apenas o **agente HTTP** que roda no servidor do usuario.
+### O Problema
+Node Exporter cobre systemctl, cAdvisor cobre containers — são dois processos separados. O usuário quer instalar **um único agente** e ter tudo.
 
-### O que sera criado
+### Solução: Manter o Agente Customizado como Solução Principal
 
-Um unico arquivo Python (`monitoring-agent.py`) que sera adicionado ao repositorio como referencia/documentacao. O agente:
+O `monitoring-agent.py` que já criamos **já faz tudo em um único processo** — systemctl E containers. Ele é a solução mais simples. O que falta é torná-lo mais robusto e a plataforma mais inteligente.
 
-1. **Servidor HTTP leve** na porta 9100 (configuravel)
-2. **Endpoint `/systemctl`** (POST) — recebe lista de servicos, retorna status via `systemctl show`
-   - Coleta: `active_state`, `sub_state`, `MainPID`, `MemoryCurrent`, `ActiveEnterTimestamp`
-   - Formato: `{ units: [{ name, active_state, sub_state, pid, memory_bytes, uptime_seconds }] }`
-3. **Endpoint `/containers`** (GET) — consulta Docker via socket Unix (`/var/run/docker.sock`)
-   - Coleta: `docker stats --no-stream` + `docker inspect` para cada container
-   - Formato: `{ containers: [{ name, image, status, state, health, cpu_percent, memory_percent, memory_mb, network_in_mb, network_out_mb }] }`
-4. **Endpoint `/health`** (GET) — health check do proprio agente
-5. **Seguranca**: token de autenticacao opcional via header ou env var
+### O que será feito
 
-### Arquivo
-- `docs/monitoring-agent.py` — script Python standalone, sem dependencias externas (usa apenas stdlib + subprocess + docker socket)
+#### 1. Melhorar o Agente (`docs/monitoring-agent.py`)
+- Adicionar endpoint **`/metrics`** com métricas do servidor (CPU, RAM, disco, load average)
+- Melhorar coleta de containers com restart count e created time
+- Adicionar **auto-discovery** de containers (não precisa listar manualmente)
 
-### Mudancas na plataforma
-- Atualizar `SystemctlFields` e `ContainerFields` no `AddServiceForm.tsx` com instrucoes mais detalhadas de como instalar o agente, incluindo o comando para baixar e rodar
-- Atualizar edge functions para enviar token de autenticacao se configurado no `check_config`
+#### 2. Unificar na Plataforma (`AddServiceForm.tsx`)
+- Remover distinção entre "Systemctl" e "Container" no formulário quando usar o agente customizado
+- Um único campo: **URL do Agente** + **Token** — a plataforma consulta `/systemctl`, `/containers` e `/metrics` automaticamente
+- Manter opção de Node Exporter / cAdvisor como alternativa avançada
+
+#### 3. Edge Functions Inteligentes
+- `systemctl-metrics` e `container-metrics` consultam o **mesmo agente** na mesma URL, apenas endpoints diferentes
+- Adicionar nova edge function **`server-metrics`** que consulta `/metrics` para CPU/RAM/disco do host
+
+#### 4. Script de Instalação (`docs/install-agent.sh`)
+- Já existe e instala tudo em um comando
+- Atualizar para verificar permissões do Docker socket automaticamente
+- Resultado: `curl ... | sudo bash -s -- --token MEU_TOKEN` → agente rodando com systemctl + containers + métricas do host
+
+### Arquivos modificados
+| Arquivo | Mudança |
+|---|---|
+| `docs/monitoring-agent.py` | Adicionar `/metrics` (CPU, RAM, disco, load) |
+| `docs/install-agent.sh` | Verificar Docker socket permissions |
+| `src/components/monitoring/AddServiceForm.tsx` | Simplificar UI — um agente, tudo incluso |
+| `supabase/functions/server-metrics/index.ts` | Nova edge function para métricas do host |
+
+### Resumo
+O usuário instala **um script**, configura **uma URL** na plataforma, e tudo funciona: systemctl, containers e métricas do servidor.
 
