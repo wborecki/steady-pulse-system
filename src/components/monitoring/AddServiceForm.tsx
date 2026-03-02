@@ -189,6 +189,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           base_url: form.get('airflow_url') as string,
           username: form.get('airflow_username') as string,
           password: form.get('airflow_password') as string,
+          auth_type: (form.get('airflow_auth_type') as string) || 'jwt',
         };
         break;
     }
@@ -721,7 +722,7 @@ function AirflowFields() {
     <div className="space-y-3">
       <div className="space-y-2">
         <Label>URL do Airflow</Label>
-        <Input name="airflow_url" required placeholder="https://airflow.empresa.com" className="bg-secondary border-border" />
+        <Input name="airflow_url" required placeholder="http://212.47.72.193:8080" className="bg-secondary border-border" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -733,7 +734,21 @@ function AirflowFields() {
           <Input name="airflow_password" type="password" required placeholder="••••••••" className="bg-secondary border-border" />
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Coleta: Health do Scheduler, DAGs (ativas/pausadas), DAG Runs (sucesso/falha), Import Errors, Pool Utilization.</p>
+      <div className="space-y-2">
+        <Label>Autenticação</Label>
+        <Select name="airflow_auth_type" defaultValue="jwt">
+          <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="jwt">JWT Token (Airflow 3.x)</SelectItem>
+            <SelectItem value="basic">Basic Auth (Airflow 2.x)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        <strong>JWT (Airflow 3.x):</strong> Obtém token via <code>/auth/token</code> e usa nas chamadas <code>/api/v2</code>.<br />
+        <strong>Basic (Airflow 2.x):</strong> Usa usuário/senha direto nas chamadas <code>/api/v1</code>.<br />
+        Coleta: Health do Scheduler, DAGs, DAG Runs, Import Errors, Pool Utilization.
+      </p>
     </div>
   );
 }
