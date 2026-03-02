@@ -1,16 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useService, useUpdateService, useDeleteService } from '@/hooks/useServices';
+import { useService, useDeleteService } from '@/hooks/useServices';
 import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
+import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
@@ -65,7 +64,6 @@ const ServiceDetail = () => {
   const { data: service, isLoading } = useService(id);
   const { data: history = [] } = useHealthCheckHistory(id, 200);
   const triggerCheck = useTriggerHealthCheck();
-  const updateService = useUpdateService();
   const deleteService = useDeleteService();
   const [editOpen, setEditOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -171,24 +169,6 @@ const ServiceDetail = () => {
     }
   };
 
-  const handleEdit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    try {
-      await updateService.mutateAsync({
-        id: id!,
-        name: form.get('name') as string,
-        description: (form.get('description') as string) || '',
-        url: (form.get('url') as string) || null,
-        category: form.get('category') as string,
-        check_interval_seconds: Number(form.get('interval') || 60),
-      } as any);
-      toast.success('Serviço atualizado!');
-      setEditOpen(false);
-    } catch {
-      toast.error('Erro ao atualizar serviço');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -467,44 +447,20 @@ const ServiceDetail = () => {
           <SheetHeader>
             <SheetTitle className="font-heading">Editar Serviço</SheetTitle>
           </SheetHeader>
-          <form onSubmit={handleEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input name="name" defaultValue={service.name} required className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label>Categoria</Label>
-              <Select name="category" defaultValue={service.category}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(categoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>URL</Label>
-              <Input name="url" defaultValue={service.url || ''} className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label>Intervalo de verificação</Label>
-              <Select name="interval" defaultValue={String(service.check_interval_seconds)}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 segundos</SelectItem>
-                  <SelectItem value="60">1 minuto</SelectItem>
-                  <SelectItem value="300">5 minutos</SelectItem>
-                  <SelectItem value="600">10 minutos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Input name="description" defaultValue={service.description} className="bg-secondary border-border" />
-            </div>
-            <Button type="submit" className="w-full" disabled={updateService.isPending}>
-              {updateService.isPending ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </form>
+          <AddServiceForm
+            mode="edit"
+            initialData={{
+              id: service.id,
+              name: service.name,
+              category: service.category,
+              check_type: service.check_type,
+              url: service.url,
+              description: service.description,
+              check_config: service.check_config as Record<string, unknown>,
+              check_interval_seconds: service.check_interval_seconds,
+            }}
+            onSuccess={() => setEditOpen(false)}
+          />
         </SheetContent>
       </Sheet>
     </div>
