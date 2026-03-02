@@ -230,6 +230,36 @@ Deno.serve(async (req) => {
           }
           break;
         }
+        case "lambda": {
+          const result = await delegateToFunction("lambda-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "ecs": {
+          const result = await delegateToFunction("ecs-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "cloudwatch_alarms": {
+          const result = await delegateToFunction("cloudwatch-alarms");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "systemctl": {
+          const result = await delegateToFunction("systemctl-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
+        case "container": {
+          const result = await delegateToFunction("container-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
         case "http":
         default: {
           if (service.url) {

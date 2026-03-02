@@ -34,11 +34,13 @@ function MetricCard({ label, value, unit, color }: { label: string; value: numbe
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
   server: 'Servidores', process: 'Processos', api: 'APIs',
+  container: 'Containers',
 };
 
 const checkTypeLabels: Record<string, string> = {
   http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL Query',
   postgresql: 'PostgreSQL', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3', custom: 'Custom',
+  lambda: 'Lambda', ecs: 'ECS', cloudwatch_alarms: 'CW Alarms', systemctl: 'Systemctl', container: 'Container',
 };
 
 const periodOptions = [
@@ -320,6 +322,41 @@ const ServiceDetail = () => {
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
             <MetricCard label="Disco" value={Number(service.disk)} unit="%" color="text-warning" />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
+          </>
+        ) : checkType === 'lambda' ? (
+          <>
+            <MetricCard label="Error Rate" value={Number(service.cpu)} unit="%" color="text-destructive" />
+            <MetricCard label="Duration Avg" value={Number(service.memory)} unit="ms" color="text-primary" />
+            <MetricCard label="Throttles" value={Number(service.disk)} unit="" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+          </>
+        ) : checkType === 'ecs' ? (
+          <>
+            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+          </>
+        ) : checkType === 'cloudwatch_alarms' ? (
+          <>
+            <MetricCard label="Em Alarme" value={Number(service.cpu)} unit="" color="text-destructive" />
+            <MetricCard label="OK" value={Number(service.memory)} unit="" color="text-success" />
+            <MetricCard label="Insuficiente" value={Number(service.disk)} unit="" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+          </>
+        ) : checkType === 'systemctl' ? (
+          <>
+            <MetricCard label="Ativos" value={Number(service.cpu)} unit="" color="text-success" />
+            <MetricCard label="Falhos" value={Number(service.memory)} unit="" color="text-destructive" />
+            <MetricCard label="Inativos" value={Number(service.disk)} unit="" color="text-warning" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
+          </>
+        ) : checkType === 'container' ? (
+          <>
+            <MetricCard label="CPU Avg" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="Mem Avg" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
           </>
         ) : (
           <>
@@ -746,7 +783,274 @@ const ServiceDetail = () => {
         );
       })()}
 
-      {/* HTTP-specific: Status Code Distribution */}
+      {/* Lambda Details */}
+      {checkType === 'lambda' && (() => {
+        const details = (config as any)?._lambda_details;
+        if (!details) return null;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Invocações" value={details.invocations ?? 0} unit="" color="text-primary" />
+              <MetricCard label="Erros" value={details.errors ?? 0} unit="" color="text-destructive" />
+              <MetricCard label="Duration P99" value={details.duration_p99 ?? 0} unit="ms" color="text-warning" />
+              <MetricCard label="Concurrent" value={details.concurrent_executions ?? 0} unit="" color="text-foreground" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Performance</h3>
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-primary">{details.duration_avg?.toFixed(1) ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Duration Avg (ms)</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-heading font-bold text-warning">{details.duration_p99?.toFixed(1) ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Duration P99 (ms)</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Confiabilidade</h3>
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <p className={`text-2xl font-heading font-bold ${(details.error_rate ?? 0) > 5 ? 'text-destructive' : 'text-success'}`}>{details.error_rate?.toFixed(2) ?? 0}%</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Error Rate</p>
+                    </div>
+                    <div>
+                      <p className={`text-2xl font-heading font-bold ${(details.throttles ?? 0) > 0 ? 'text-warning' : 'text-success'}`}>{details.throttles ?? 0}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">Throttles</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ECS Details */}
+      {checkType === 'ecs' && (() => {
+        const details = (config as any)?._ecs_details;
+        if (!details) return null;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Running" value={details.running_count ?? 0} unit="" color="text-success" />
+              <MetricCard label="Desired" value={details.desired_count ?? 0} unit="" color="text-primary" />
+              <MetricCard label="CPU" value={details.cpu_percent ?? 0} unit="%" color="text-warning" />
+              <MetricCard label="Memory" value={details.memory_percent ?? 0} unit="%" color="text-foreground" />
+            </div>
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">Tasks</h3>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-success">{details.running_count ?? 0}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Running</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-primary">{details.desired_count ?? 0}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Desired</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-heading font-bold text-warning">{details.pending_count ?? 0}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">Pending</p>
+                  </div>
+                </div>
+                <div className="mt-3 h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${details.running_count >= details.desired_count ? 'bg-success' : 'bg-warning'}`} style={{ width: `${details.desired_count ? (details.running_count / details.desired_count) * 100 : 0}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+            {details.deployments?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Deployments</h3>
+                  <table className="w-full text-sm font-mono">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="p-2 text-left">Status</th>
+                        <th className="p-2 text-left">Task Def</th>
+                        <th className="p-2 text-right">Running</th>
+                        <th className="p-2 text-right">Desired</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {details.deployments.map((d: any, i: number) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="p-2"><span className={`text-xs px-2 py-0.5 rounded ${d.status === 'PRIMARY' ? 'bg-success/20 text-success' : 'bg-secondary text-muted-foreground'}`}>{d.status}</span></td>
+                          <td className="p-2 text-xs">{d.task_definition}</td>
+                          <td className="p-2 text-right">{d.running}</td>
+                          <td className="p-2 text-right">{d.desired}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* CloudWatch Alarms Details */}
+      {checkType === 'cloudwatch_alarms' && (() => {
+        const details = (config as any)?._cw_alarms_details;
+        if (!details) return null;
+        const summary = details.summary || {};
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Total" value={summary.total ?? 0} unit="" color="text-foreground" />
+              <MetricCard label="ALARM" value={summary.alarm ?? 0} unit="" color="text-destructive" />
+              <MetricCard label="OK" value={summary.ok ?? 0} unit="" color="text-success" />
+              <MetricCard label="INSUFFICIENT" value={summary.insufficient_data ?? 0} unit="" color="text-warning" />
+            </div>
+            {details.alarms?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Alarmes</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="p-2 text-left">Nome</th>
+                          <th className="p-2 text-left">Estado</th>
+                          <th className="p-2 text-left">Métrica</th>
+                          <th className="p-2 text-right">Threshold</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.alarms.map((a: any, i: number) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="p-2 text-xs max-w-[200px] truncate">{a.name}</td>
+                            <td className="p-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${a.state === 'ALARM' ? 'bg-destructive/20 text-destructive' : a.state === 'OK' ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'}`}>
+                                {a.state}
+                              </span>
+                            </td>
+                            <td className="p-2 text-xs">{a.metric_name}</td>
+                            <td className="p-2 text-right text-xs">{a.threshold ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Systemctl Details */}
+      {checkType === 'systemctl' && (() => {
+        const details = (config as any)?._systemctl_details;
+        if (!details) return null;
+        const summary = details.summary || {};
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Total" value={summary.total ?? 0} unit="" color="text-foreground" />
+              <MetricCard label="Ativos" value={summary.active ?? 0} unit="" color="text-success" />
+              <MetricCard label="Falhos" value={summary.failed ?? 0} unit="" color="text-destructive" />
+              <MetricCard label="Inativos" value={summary.inactive ?? 0} unit="" color="text-warning" />
+            </div>
+            {details.units?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Serviços</h3>
+                  <table className="w-full text-sm font-mono">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground text-xs">
+                        <th className="p-2 text-left">Unit</th>
+                        <th className="p-2 text-left">Estado</th>
+                        <th className="p-2 text-right">PID</th>
+                        <th className="p-2 text-right">Memória</th>
+                        <th className="p-2 text-right">Uptime</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {details.units.map((u: any, i: number) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="p-2 text-xs">{u.name}</td>
+                          <td className="p-2">
+                            <span className={`text-xs px-2 py-0.5 rounded ${u.active_state === 'active' ? 'bg-success/20 text-success' : u.active_state === 'failed' ? 'bg-destructive/20 text-destructive' : 'bg-warning/20 text-warning'}`}>
+                              {u.active_state}{u.sub_state ? ` (${u.sub_state})` : ''}
+                            </span>
+                          </td>
+                          <td className="p-2 text-right text-xs">{u.pid || '-'}</td>
+                          <td className="p-2 text-right text-xs">{u.memory_mb ? `${u.memory_mb} MB` : '-'}</td>
+                          <td className="p-2 text-right text-xs">{u.uptime_seconds ? `${Math.round(u.uptime_seconds / 3600)}h` : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Container Details */}
+      {checkType === 'container' && (() => {
+        const details = (config as any)?._container_details;
+        if (!details) return null;
+        const summary = details.summary || {};
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard label="Running" value={summary.running ?? 0} unit="" color="text-success" />
+              <MetricCard label="Stopped" value={summary.stopped ?? 0} unit="" color="text-warning" />
+              <MetricCard label="Unhealthy" value={summary.unhealthy ?? 0} unit="" color="text-destructive" />
+              <MetricCard label="Total" value={summary.total ?? 0} unit="" color="text-foreground" />
+            </div>
+            {details.containers?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Containers</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="p-2 text-left">Nome</th>
+                          <th className="p-2 text-left">Imagem</th>
+                          <th className="p-2 text-left">Estado</th>
+                          <th className="p-2 text-right">CPU %</th>
+                          <th className="p-2 text-right">Mem %</th>
+                          <th className="p-2 text-right">Net I/O</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.containers.map((c: any, i: number) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="p-2 text-xs max-w-[150px] truncate">{c.name}</td>
+                            <td className="p-2 text-xs max-w-[150px] truncate">{c.image}</td>
+                            <td className="p-2">
+                              <span className={`text-xs px-2 py-0.5 rounded ${c.state === 'running' ? 'bg-success/20 text-success' : c.health === 'unhealthy' ? 'bg-destructive/20 text-destructive' : 'bg-warning/20 text-warning'}`}>
+                                {c.state}{c.health ? ` (${c.health})` : ''}
+                              </span>
+                            </td>
+                            <td className="p-2 text-right text-xs">{c.cpu_percent?.toFixed(1)}%</td>
+                            <td className="p-2 text-right text-xs">{c.memory_percent?.toFixed(1)}%</td>
+                            <td className="p-2 text-right text-xs">{c.network_in_mb?.toFixed(1) ?? '-'}/{c.network_out_mb?.toFixed(1) ?? '-'} MB</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
+
       {isHttpType(checkType) && history.length > 0 && (
         <Card className="glass-card">
           <CardContent className="p-4">
