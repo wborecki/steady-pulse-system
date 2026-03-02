@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -13,6 +14,7 @@ const navItems = [
 export function AppSidebar({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { signOut } = useAuth();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -49,12 +51,21 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-3 border-t border-sidebar-border text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4 mx-auto" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        <div className="border-t border-sidebar-border">
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span>Sair</span>}
+          </button>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="w-full p-3 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4 mx-auto" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 overflow-auto">
