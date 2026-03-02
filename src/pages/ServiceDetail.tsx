@@ -467,7 +467,7 @@ const ServiceDetail = () => {
 
       {/* Resource History Charts */}
       {(isInfraType(checkType) || isAirflowType(checkType) || cpuHistory.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
           {cpuHistory.length > 0 && (
             <div className="glass-card rounded-lg p-4">
               <MetricsChart title={isAirflowType(checkType) ? "Pool Utilization (%)" : "CPU (%)"} data={cpuHistory} color="hsl(175, 80%, 50%)" unit="%" />

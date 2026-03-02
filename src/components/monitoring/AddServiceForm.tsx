@@ -277,7 +277,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       {checkType === 'sql_query' && <SqlServerFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
 
       {/* Airflow fields */}
-      {checkType === 'airflow' && <AirflowFields />}
+      {checkType === 'airflow' && <AirflowFields initialConfig={initialData?.check_config} />}
 
       {/* PostgreSQL fields */}
       {checkType === 'postgresql' && <PostgresFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
@@ -717,13 +717,13 @@ function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string;
   );
 }
 
-function AirflowFields() {
-  const [authType, setAuthType] = useState('jwt');
+function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [authType, setAuthType] = useState((initialConfig?.auth_type as string) || 'jwt');
   return (
     <div className="space-y-3">
       <div className="space-y-2">
         <Label>Versão / Autenticação</Label>
-        <Select name="airflow_auth_type" defaultValue="jwt" onValueChange={setAuthType}>
+        <Select name="airflow_auth_type" defaultValue={authType} onValueChange={setAuthType}>
           <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="jwt">Airflow 3.x (JWT automático)</SelectItem>
@@ -733,16 +733,16 @@ function AirflowFields() {
       </div>
       <div className="space-y-2">
         <Label>URL do Airflow</Label>
-        <Input name="airflow_url" required placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
+        <Input name="airflow_url" required defaultValue={(initialConfig?.base_url as string) || ''} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Usuário</Label>
-          <Input name="airflow_username" required placeholder="admin" className="bg-secondary border-border" />
+          <Input name="airflow_username" required defaultValue={(initialConfig?.username as string) || ''} placeholder="admin" className="bg-secondary border-border" />
         </div>
         <div className="space-y-2">
           <Label>Senha</Label>
-          <Input name="airflow_password" type="password" required placeholder="••••••••" className="bg-secondary border-border" />
+          <Input name="airflow_password" type="password" required defaultValue={(initialConfig?.password as string) || ''} placeholder="••••••••" className="bg-secondary border-border" />
         </div>
       </div>
       {authType === 'jwt' ? (
