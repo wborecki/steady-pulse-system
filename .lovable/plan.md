@@ -1,35 +1,23 @@
 
 
-## Autenticação Simples com Usuário Único
+## Melhorar Layout da Seção Final do Dashboard
 
-Como o sistema é interno e precisa de apenas um usuário, a abordagem será:
+O problema visível na screenshot: a seção de 3 colunas (Top 5 Latência, Serviços, Alertas) está desalinhada — as colunas têm alturas diferentes, os cards de serviço ocupam muito espaço vertical, e os filtros de categoria quebram a linha.
 
-1. **Criar o usuário no backend** via migration SQL que insere `admin@monitorhub.com` com senha `Admin123!` na tabela `auth.users` do Supabase
-   - Na verdade, não podemos inserir diretamente em `auth.users`. Vou usar a Edge Function para criar o usuário via API admin, ou melhor: **habilitar auto-confirm** e criar o usuário programaticamente na primeira vez, OU simplesmente criar uma página de login e o usuário se cadastra uma vez.
-   - Abordagem mais limpa: **habilitar auto-confirm de email**, criar o usuário via seed edge function, e proteger todas as rotas.
+### Correções em `src/pages/Index.tsx`
 
-2. **Criar página de Login** (`/login`) — formulário simples com email e senha, visual consistente com o tema escuro do MonitorHub
+1. **Reorganizar layout geral** — mover a seção Top 5 + Serviços + Alertas para um grid `lg:grid-cols-3` com alturas alinhadas (`items-start`) e limitar altura máxima de cada coluna com scroll interno
 
-3. **Criar hook de autenticação** (`useAuth`) — gerencia sessão, login, logout
+2. **Top 5 Latência** — manter compacto, reduzir padding dos cards para `p-2.5`
 
-4. **Proteger rotas** — componente `ProtectedRoute` que redireciona para `/login` se não autenticado
+3. **Serviços** — mover filtros de categoria para uma linha horizontal com scroll (`overflow-x-auto whitespace-nowrap`), limitar `max-h-[400px]` com scroll
 
-5. **Adicionar botão de logout** no sidebar
+4. **Alertas** — limitar `max-h-[400px]` com scroll, manter mesmo tamanho visual das outras colunas
 
-6. **Criar edge function `seed-admin`** que cria o usuário admin usando `supabase.auth.admin.createUser()` — chamada uma vez
+5. **Equalizar visualmente** — cada coluna dentro de um container `glass-card rounded-lg p-4` para dar consistência visual entre as 3 seções, todas com a mesma altura máxima
 
-### Arquivos
-
+### Arquivo
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/Login.tsx` | Nova página de login |
-| `src/hooks/useAuth.ts` | Hook de autenticação |
-| `src/components/ProtectedRoute.tsx` | Wrapper de proteção de rotas |
-| `src/components/monitoring/AppSidebar.tsx` | Adicionar botão de logout |
-| `src/App.tsx` | Adicionar rota `/login` e proteger demais rotas |
-| `supabase/functions/seed-admin/index.ts` | Edge function para criar o usuário admin |
-
-### Configuração
-- Habilitar auto-confirm de email (para o usuário admin não precisar confirmar)
-- Credenciais: `admin@monitorhub.com` / `Admin123!`
+| `src/pages/Index.tsx` | Refatorar seção final (linhas 229-356) com containers uniformes e scroll interno |
 
