@@ -9,13 +9,42 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Plus, Trash2, Bell, BellOff, ShieldAlert } from 'lucide-react';
 
-const metricOptions = [
+const allMetricOptions = [
   { value: 'cpu', label: 'CPU %' },
   { value: 'memory', label: 'Memória %' },
   { value: 'disk', label: 'Disco %' },
   { value: 'response_time', label: 'Latência (ms)' },
   { value: 'error_rate', label: 'Taxa de Erro %' },
 ];
+
+// Map check_type → which metrics are actually collected
+const metricsByCheckType: Record<string, string[]> = {
+  http:              ['response_time'],
+  tcp:               ['response_time'],
+  process:           ['response_time'],
+  sql_query:         ['cpu', 'memory', 'disk', 'response_time'],
+  postgresql:        ['cpu', 'memory', 'response_time'],
+  mongodb:           ['cpu', 'memory', 'disk', 'response_time'],
+  cloudwatch:        ['cpu', 'memory', 'disk', 'response_time'],
+  s3:                ['response_time'],
+  airflow:           ['cpu', 'memory', 'response_time'],
+  lambda:            ['cpu', 'memory', 'response_time', 'error_rate'],
+  ecs:               ['cpu', 'memory', 'response_time'],
+  cloudwatch_alarms: ['response_time'],
+  systemctl:         ['cpu', 'memory', 'disk', 'response_time'],
+  container:         ['cpu', 'memory', 'disk', 'response_time'],
+};
+
+// Friendly labels per check type for clarity
+const metricLabelOverrides: Record<string, Record<string, string>> = {
+  postgresql: { cpu: 'Conexões %', memory: 'Cache Hit %' },
+  mongodb:    { cpu: 'Conexões %', memory: 'Memória %' },
+  airflow:    { cpu: 'Pool Utilization %', memory: 'DAG Success %' },
+  lambda:     { cpu: 'Error Rate %', memory: 'Duration Avg ms' },
+  ecs:        { cpu: 'CPU %', memory: 'Memória %' },
+  cloudwatch_alarms: {},
+  sql_query:  { disk: 'Storage %' },
+};
 
 const operatorOptions = [
   { value: 'gt', label: '>' },
@@ -41,21 +70,16 @@ export function ThresholdConfigPanel({ serviceId, checkType }: Props) {
   const toggle = useToggleThreshold();
 
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ metric: 'cpu', operator: 'gt', threshold: '90', severity: 'warning', cooldown_minutes: '15' });
 
-  // Filter metric options based on check type
-  const availableMetrics = metricOptions.filter(m => {
-    if (['tcp', 'process', 's3'].includes(checkType)) {
-      return ['response_time'].includes(m.value);
-    }
-    if (checkType === 'lambda') {
-      return ['cpu', 'response_time', 'error_rate'].includes(m.value);
-    }
-    if (['cloudwatch_alarms'].includes(checkType)) {
-      return ['cpu'].includes(m.value); // cpu = alarm count
-    }
-    return true;
-  });
+  // Determine available metrics for this check type
+  const allowedMetrics = metricsByCheckType[checkType] || ['cpu', 'memory', 'disk', 'response_time'];
+  const overrides = metricLabelOverrides[checkType] || {};
+  const availableMetrics = allMetricOptions
+    .filter(m => allowedMetrics.includes(m.value))
+    .map(m => ({ ...m, label: overrides[m.value] || m.label }));
+
+  const defaultMetric = availableMetrics[0]?.value || 'response_time';
+  const [form, setForm] = useState({ metric: defaultMetric, operator: 'gt', threshold: '90', severity: 'warning', cooldown_minutes: '15' });
 
   const handleAdd = async () => {
     try {
@@ -93,7 +117,11 @@ export function ThresholdConfigPanel({ serviceId, checkType }: Props) {
     }
   };
 
-  const metricLabel = (metric: string) => metricOptions.find(m => m.value === metric)?.label ?? metric;
+  const metricLabel = (metric: string) => {
+    const override = overrides[metric];
+    if (override) return override;
+    return allMetricOptions.find(m => m.value === metric)?.label ?? metric;
+  };
   const operatorLabel = (op: string) => operatorOptions.find(o => o.value === op)?.label ?? op;
 
   return (

@@ -67,14 +67,32 @@ export function useCreateService() {
         .single();
       if (error) throw error;
 
-      // Create default thresholds for the new service
+      // Create default thresholds based on check type
       if (data?.id) {
-        const defaults = [
-          { service_id: data.id, metric: 'cpu', operator: 'gt', threshold: 90, severity: 'critical' },
-          { service_id: data.id, metric: 'memory', operator: 'gt', threshold: 85, severity: 'warning' },
-          { service_id: data.id, metric: 'disk', operator: 'gt', threshold: 90, severity: 'critical' },
-        ];
-        await supabase.from('alert_thresholds').insert(defaults as any);
+        const ct = (service as any).check_type || 'http';
+        const infraTypes = ['systemctl', 'container', 'cloudwatch', 'sql_query', 'mongodb'];
+        const defaults: any[] = [];
+
+        // All types get response_time threshold
+        defaults.push({ service_id: data.id, metric: 'response_time', operator: 'gt', threshold: 5000, severity: 'warning' });
+
+        // Only infra/server types get CPU/memory/disk thresholds
+        if (infraTypes.includes(ct)) {
+          defaults.push(
+            { service_id: data.id, metric: 'cpu', operator: 'gt', threshold: 90, severity: 'critical' },
+            { service_id: data.id, metric: 'memory', operator: 'gt', threshold: 85, severity: 'warning' },
+            { service_id: data.id, metric: 'disk', operator: 'gt', threshold: 90, severity: 'critical' },
+          );
+        } else if (['postgresql', 'ecs', 'airflow'].includes(ct)) {
+          defaults.push(
+            { service_id: data.id, metric: 'cpu', operator: 'gt', threshold: 90, severity: 'critical' },
+            { service_id: data.id, metric: 'memory', operator: 'gt', threshold: 85, severity: 'warning' },
+          );
+        }
+
+        if (defaults.length > 0) {
+          await supabase.from('alert_thresholds').insert(defaults);
+        }
       }
 
       return data;
