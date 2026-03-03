@@ -61,9 +61,10 @@ const severityOptions = [
 interface Props {
   serviceId: string;
   checkType: string;
+  serviceMetrics?: { cpu: number; memory: number; disk: number; response_time: number };
 }
 
-export function ThresholdConfigPanel({ serviceId, checkType }: Props) {
+export function ThresholdConfigPanel({ serviceId, checkType, serviceMetrics }: Props) {
   const { data: thresholds = [], isLoading } = useAlertThresholds(serviceId);
   const upsert = useUpsertThreshold();
   const remove = useDeleteThreshold();
@@ -71,8 +72,16 @@ export function ThresholdConfigPanel({ serviceId, checkType }: Props) {
 
   const [adding, setAdding] = useState(false);
 
-  // Determine available metrics for this check type
-  const allowedMetrics = metricsByCheckType[checkType] || ['cpu', 'memory', 'disk', 'response_time'];
+  // Determine available metrics: combine check_type mapping + metrics the service actually has data for
+  const baseMetrics = metricsByCheckType[checkType] || ['cpu', 'memory', 'disk', 'response_time'];
+  const extraMetrics: string[] = [];
+  if (serviceMetrics) {
+    if (serviceMetrics.cpu > 0 && !baseMetrics.includes('cpu')) extraMetrics.push('cpu');
+    if (serviceMetrics.memory > 0 && !baseMetrics.includes('memory')) extraMetrics.push('memory');
+    if (serviceMetrics.disk > 0 && !baseMetrics.includes('disk')) extraMetrics.push('disk');
+    if (serviceMetrics.response_time > 0 && !baseMetrics.includes('response_time')) extraMetrics.push('response_time');
+  }
+  const allowedMetrics = [...baseMetrics, ...extraMetrics];
   const overrides = metricLabelOverrides[checkType] || {};
   const availableMetrics = allMetricOptions
     .filter(m => allowedMetrics.includes(m.value))
