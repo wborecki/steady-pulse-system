@@ -38,8 +38,8 @@ const Index = () => {
     if (recentChecks.length === 0) return { sla24h: '0' };
     const now = Date.now();
     const checks24h = recentChecks.filter(c => new Date(c.checked_at).getTime() > now - 24 * 3600000);
-    const online24h = checks24h.filter(c => c.status === 'online').length;
-    const sla24h = checks24h.length > 0 ? ((online24h / checks24h.length) * 100).toFixed(2) : '0';
+    const available24h = checks24h.filter(c => c.status === 'online' || c.status === 'warning').length;
+    const sla24h = checks24h.length > 0 ? ((available24h / checks24h.length) * 100).toFixed(2) : '0';
     return { sla24h };
   }, [recentChecks]);
 
@@ -95,7 +95,7 @@ const Index = () => {
     recentChecks.forEach(h => {
       const time = new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const entry = byHour.get(time) || { online: 0, total: 0 };
-      if (h.status === 'online') entry.online++;
+      if (h.status === 'online' || h.status === 'warning') entry.online++;
       entry.total++;
       byHour.set(time, entry);
     });
