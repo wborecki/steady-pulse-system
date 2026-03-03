@@ -56,19 +56,19 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border">
+      <div className="border-t border-sidebar-border p-2 space-y-1">
         <button
           onClick={signOut}
-          className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           <LogOut className="h-4 w-4 flex-shrink-0" />
           {!collapsed && <span>Sair</span>}
         </button>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full p-3 text-muted-foreground hover:text-foreground transition-colors hidden md:block"
+          className={`w-full flex items-center px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors hidden md:flex ${collapsed ? 'justify-center' : ''}`}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4 mx-auto" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       </div>
     </>
