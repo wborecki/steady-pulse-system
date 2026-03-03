@@ -4,7 +4,7 @@ import { useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { ServiceRow } from '@/components/monitoring/ServiceRow';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, RefreshCw } from 'lucide-react';
+import { Search, Filter, Plus, RefreshCw, Server } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -97,8 +97,14 @@ const Services = () => {
         {isLoading ? (
           <p className="text-center py-12 text-muted-foreground font-mono">Carregando...</p>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-16 text-muted-foreground space-y-4">
+            <Server className="h-12 w-12 mx-auto text-muted-foreground/50" />
             <p className="font-mono">Nenhum serviço encontrado</p>
+            {services.length === 0 && (
+              <Button onClick={() => setDialogOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" /> Adicionar primeiro serviço
+              </Button>
+            )}
           </div>
         ) : (
           filtered.map(service => (

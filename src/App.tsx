@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { AppSidebar } from "@/components/monitoring/AppSidebar";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useRealtimeSubscriptions } from "@/hooks/useRealtimeSubscriptions";
@@ -24,35 +25,37 @@ function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="*"
-            element={
-              <ProtectedRoute>
-                <RealtimeProvider>
-                  <AppSidebar>
-                    <Routes>
-                      <Route path="/" element={<Index />} />
-                      <Route path="/services" element={<Services />} />
-                      <Route path="/service/:id" element={<ServiceDetail />} />
-                      <Route path="/alerts" element={<Alerts />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
-                  </AppSidebar>
-                </RealtimeProvider>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="*"
+              element={
+                <ProtectedRoute>
+                  <RealtimeProvider>
+                    <AppSidebar>
+                      <Routes>
+                        <Route path="/" element={<Index />} />
+                        <Route path="/services" element={<Services />} />
+                        <Route path="/service/:id" element={<ServiceDetail />} />
+                        <Route path="/alerts" element={<Alerts />} />
+                        <Route path="/reports" element={<Reports />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </AppSidebar>
+                  </RealtimeProvider>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

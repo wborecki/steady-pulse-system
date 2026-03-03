@@ -323,13 +323,13 @@ const ServiceDetail = () => {
   return (
     <div className="p-6 space-y-6 grid-bg min-h-screen">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="self-start">
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-heading font-bold">{service.name}</h1>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-heading font-bold truncate">{service.name}</h1>
             <StatusIndicator status={service.status as any} size="lg" showLabel />
             <span className="text-xs font-mono text-muted-foreground bg-secondary px-2 py-0.5 rounded">
               {checkTypeLabels[checkType] || checkType}
@@ -337,7 +337,7 @@ const ServiceDetail = () => {
           </div>
           <p className="text-sm text-muted-foreground font-mono">{service.description}</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap self-start">
           <Button
             variant={service.status === 'maintenance' ? 'default' : 'outline'}
             size="sm"
@@ -346,15 +346,15 @@ const ServiceDetail = () => {
             className="gap-2"
           >
             <Wrench className="h-4 w-4" />
-            {service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}
+            <span className="hidden sm:inline">{service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
-            <Pencil className="h-4 w-4" /> Editar
+            <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Editar</span>
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" className="gap-2">
-                <Trash2 className="h-4 w-4" /> Excluir
+                <Trash2 className="h-4 w-4" /> <span className="hidden sm:inline">Excluir</span>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -372,7 +372,7 @@ const ServiceDetail = () => {
           </AlertDialog>
           <Button variant="outline" size="sm" onClick={handleCheck} disabled={triggerCheck.isPending} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
-            Verificar Agora
+            <span className="hidden sm:inline">Verificar Agora</span>
           </Button>
         </div>
       </div>

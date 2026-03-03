@@ -71,14 +71,14 @@ function getTimeSinceCheck(lastCheck: string | null): { text: string; color: str
   return { text: `${Math.round(diffMin / 60)}h`, color: 'text-destructive' };
 }
 
-function showsResourceMetrics(checkType?: string): boolean {
-  return !checkType || ['tcp', 'process', 'cloudwatch'].includes(checkType);
+function showsResourceMetrics(service: ServiceLike): boolean {
+  return Number(service.cpu) > 0 || Number(service.memory) > 0 || Number(service.disk) > 0;
 }
 
 export function ServiceRow({ service, onClick }: ServiceRowProps) {
   const Icon = categoryIconMap[service.category] || Server;
   const timeSince = getTimeSinceCheck(service.last_check);
-  const hasResources = showsResourceMetrics(service.check_type);
+  const hasResources = showsResourceMetrics(service);
 
   return (
     <Card

@@ -4,7 +4,8 @@
 # =============================================================================
 #
 # Uso (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/SEU_REPO/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
+#   curl -fsSL https://SEU_DOMINIO/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
+#   ⚠️  Substitua SEU_DOMINIO pela URL real onde o script está hospedado
 #
 # Opções:
 #   --port PORT       Porta do agente (padrão: 9100)
@@ -29,7 +30,11 @@ CHECK_DOCKER=true
 UNINSTALL=false
 INSTALL_DIR="/opt/monitoring-agent"
 SERVICE_NAME="monitoring-agent"
-AGENT_URL="https://raw.githubusercontent.com/SEU_REPO/main/docs/monitoring-agent.py"
+# ⚠️  IMPORTANTE: Substitua a URL abaixo pela URL real onde o monitoring-agent.py está hospedado
+# Exemplos:
+#   https://storage.seudominio.com/monitoring-agent.py
+#   https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/docs/monitoring-agent.py
+AGENT_URL="${AGENT_URL:-https://SEU_DOMINIO/docs/monitoring-agent.py}"
 
 log()   { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
@@ -149,7 +154,7 @@ fi
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
 Description=Monitoring Agent (porta ${AGENT_PORT})
-Documentation=https://github.com/SEU_REPO/docs/monitoring-agent.py
+Documentation=https://github.com/SEU_USUARIO/SEU_REPO
 After=network-online.target docker.service
 Wants=network-online.target
 
