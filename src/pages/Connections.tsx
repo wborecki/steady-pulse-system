@@ -33,6 +33,7 @@ const typeIcons: Record<CredentialType, React.ReactNode> = {
   azure_sql: <Database className="h-4 w-4" />,
   ssh: <Lock className="h-4 w-4" />,
   http_auth: <Globe className="h-4 w-4" />,
+  supabase: <Database className="h-4 w-4" />,
 };
 
 const typeColors: Record<CredentialType, string> = {
@@ -44,11 +45,15 @@ const typeColors: Record<CredentialType, string> = {
   azure_sql: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   ssh: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   http_auth: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  supabase: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
 };
 
-/** Fields that should always be masked (passwords only — once set, never revealed) */
+/** Fields that should always be masked — auto-collected from definitions + connection strings */
 const sensitiveKeys = new Set([
-  'password', 'private_key', 'ssh_password',
+  ...Object.values(credentialFields).flatMap(fields =>
+    fields.filter(f => f.type === 'password').map(f => f.key)
+  ),
+  'connection_string',
 ]);
 
 function maskValue(key: string, value: string): string {
@@ -188,6 +193,7 @@ export default function Connections() {
 
       {/* Create / Edit Sheet */}
       <CredentialDialog
+        key={editingCredential?.id ?? 'new'}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         credential={editingCredential}
@@ -306,27 +312,29 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
   isSaving: boolean;
 }) {
   const UNCHANGED_SENTINEL = '••••••••';
-  const [type, setType] = useState<CredentialType>('agent');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [config, setConfig] = useState<Record<string, string>>({});
 
-  // Sync form state whenever the dialog opens (or credential changes)
+  const buildConfigState = (cred: Credential | null): Record<string, string> => {
+    if (!cred?.config) return {};
+    const obj: Record<string, string> = {};
+    for (const [k, v] of Object.entries(cred.config as Record<string, unknown>)) {
+      obj[k] = sensitiveKeys.has(k) ? UNCHANGED_SENTINEL : String(v ?? '');
+    }
+    return obj;
+  };
+
+  const [type, setType] = useState<CredentialType>(credential?.credential_type as CredentialType || 'agent');
+  const [name, setName] = useState(credential?.name ?? '');
+  const [description, setDescription] = useState(credential?.description ?? '');
+  const [config, setConfig] = useState<Record<string, string>>(() => buildConfigState(credential));
+
+  // Sync form state when the dialog reopens for an already-mounted instance
+  // (same credential key — e.g. close then reopen same credential)
   useEffect(() => {
     if (!open) return;
-    const cred = credential;
-    setType(cred?.credential_type as CredentialType || 'agent');
-    setName(cred?.name || '');
-    setDescription(cred?.description || '');
-    if (cred?.config) {
-      const obj: Record<string, string> = {};
-      for (const [k, v] of Object.entries(cred.config as Record<string, unknown>)) {
-        obj[k] = sensitiveKeys.has(k) ? UNCHANGED_SENTINEL : String(v ?? '');
-      }
-      setConfig(obj);
-    } else {
-      setConfig({});
-    }
+    setType(credential?.credential_type as CredentialType || 'agent');
+    setName(credential?.name ?? '');
+    setDescription(credential?.description ?? '');
+    setConfig(buildConfigState(credential));
   }, [open, credential]);
 
   const isEditing = !!credential;

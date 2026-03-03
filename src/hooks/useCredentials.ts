@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 
-export type CredentialType = 'aws' | 'agent' | 'airflow' | 'postgresql' | 'mongodb' | 'azure_sql' | 'ssh' | 'http_auth';
+export type CredentialType = 'aws' | 'agent' | 'airflow' | 'postgresql' | 'mongodb' | 'azure_sql' | 'ssh' | 'http_auth' | 'supabase';
 
 export interface Credential {
   id: string;
@@ -30,6 +30,7 @@ export const credentialTypeLabels: Record<CredentialType, string> = {
   azure_sql: 'Azure SQL',
   ssh: 'SSH',
   http_auth: 'HTTP Auth',
+  supabase: 'Supabase',
 };
 
 /** Which credential types can be used with which check types */
@@ -42,6 +43,7 @@ export const credentialCheckTypeMap: Record<CredentialType, string[]> = {
   azure_sql: ['sql_query'],
   ssh: ['tcp', 'process'],
   http_auth: ['http'],
+  supabase: ['supabase'],
 };
 
 /** Config field definitions per credential type */
@@ -98,6 +100,13 @@ export const credentialFields: Record<CredentialType, { key: string; label: stri
     { key: 'username', label: 'Usuário (Basic)' },
     { key: 'password', label: 'Senha (Basic)', type: 'password' },
     { key: 'token', label: 'Token (Bearer)', type: 'password' },
+  ],
+  supabase: [
+    { key: 'project_url', label: 'URL do Projeto', placeholder: 'https://xyzproject.supabase.co', required: true },
+    { key: 'anon_key', label: 'Anon Key (público)', placeholder: 'eyJhbGciOiJIUzI1NiIs...', required: true },
+    { key: 'service_role_key', label: 'Service Role Key', type: 'password', placeholder: 'eyJhbGciOiJIUzI1NiIs...' },
+    { key: 'project_ref', label: 'Project Ref', placeholder: 'xyzproject' },
+    { key: 'db_password', label: 'Senha do Banco', type: 'password' },
   ],
 };
 
