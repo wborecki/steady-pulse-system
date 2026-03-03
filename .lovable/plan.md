@@ -1,39 +1,40 @@
 
 
-## Auto-Discovery de Serviços no Agente
+## Melhorias Finais Antes da Produção
 
-A sua ideia é excelente. O agente já faz auto-discovery de containers Docker (`/containers` lista tudo automaticamente), mas para systemctl ele precisa dos nomes. A solução é:
+Após auditar todo o código, identifiquei melhorias práticas que mantêm o sistema simples e objetivo. Separei em **prioridade alta** (deve fazer) e **opcional** (nice-to-have).
 
-### Abordagem: Botão "Descobrir Serviços" no formulário
+### Prioridade Alta
 
-**1. Novo endpoint no agente Python (`/systemctl/list`)**
-- Lista todos os serviços systemd habilitados/ativos automaticamente via `systemctl list-units --type=service --state=running`
-- Retorna array com nomes dos serviços encontrados
+**1. Corrigir RLS Policies (Segurança)**
+O linter detectou 4 políticas com `USING (true)` / `WITH CHECK (true)` — qualquer pessoa autenticada pode inserir, atualizar e deletar dados de qualquer usuário. Precisa vincular as operações ao `auth.uid()` do usuário logado.
 
-**2. Nova edge function `discover-services`**
-- Recebe `agent_url` + `token`, chama `/systemctl/list` e `/containers` no agente
-- Retorna lista unificada de serviços systemctl e containers Docker encontrados
+**2. Email real nas notificações**
+O `send-notification` só faz `console.log` para email. Vou integrar com o sistema de email nativo do projeto para enviar alertas reais quando configurado.
 
-**3. UX no formulário `AddServiceForm`**
-- Ao selecionar tipo Systemctl ou Container e preencher a URL do agente, aparece um botão **"Descobrir Serviços"**
-- Ao clicar, chama a edge function que consulta o agente
-- Exibe lista com checkboxes dos serviços encontrados (ex: `nginx.service`, `postgresql.service`, `docker.service`)
-- O usuário marca quais quer monitorar — sem precisar digitar nada
+**3. Limpeza automática de health_checks antigos**
+Sem limpeza, a tabela `health_checks` cresce indefinidamente. Criar uma edge function `cleanup-old-checks` que roda periodicamente e remove registros com mais de 30 dias.
 
-### Sobre a arquitetura (servidor único vs separado)
+**4. Tratamento de erro no agente (retry)**
+Quando o agente não responde, as edge functions falham silenciosamente. Adicionar retry simples (1 tentativa extra) nas funções `systemctl-metrics`, `container-metrics` e `server-metrics`.
 
-A abordagem atual (separar) é a correta para produção. Motivos:
-- Cada serviço tem seus próprios thresholds, alertas e histórico independente
-- Ferramentas como Datadog, Zabbix e Grafana fazem exatamente assim
-- Um "servidor" como entrada única misturaria métricas de coisas diferentes (nginx vs postgresql) num único gráfico
+### Prioridade Média
 
-O que podemos fazer é adicionar um **atalho de cadastro em lote**: ao descobrir 5 serviços no agente, o usuário seleciona quais quer e cria todos de uma vez, cada um como entrada separada mas compartilhando a mesma `agent_url`.
+**5. Indicador de "última verificação" no dashboard**
+No dashboard principal, mostrar há quanto tempo foi a última verificação global (ex: "Última verificação: 2min atrás").
 
-### Resumo das mudanças
+**6. Validação de URL do agente no formulário**
+No `AddServiceForm`, validar se a URL do agente é acessível antes de salvar (testar `/health` do agente via edge function).
+
+### Resumo de arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `docs/monitoring-agent.py` | Novo endpoint `GET /systemctl/list` |
-| `supabase/functions/discover-services/index.ts` | Nova edge function para proxy de discovery |
-| `src/components/monitoring/AddServiceForm.tsx` | Botão "Descobrir" + checkboxes de seleção |
+| Migration SQL | Corrigir 4 RLS policies permissivas |
+| `supabase/functions/send-notification/index.ts` | Integrar envio de email real |
+| `supabase/functions/cleanup-old-checks/index.ts` | Nova função de limpeza periódica |
+| `supabase/functions/systemctl-metrics/index.ts` | Adicionar retry |
+| `supabase/functions/container-metrics/index.ts` | Adicionar retry |
+| `supabase/functions/server-metrics/index.ts` | Adicionar retry |
+| `src/pages/Index.tsx` | Indicador "última verificação" |
 
