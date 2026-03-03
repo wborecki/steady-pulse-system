@@ -46,10 +46,14 @@ Deno.serve(async (req) => {
     const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetchWithRetry(`${agentUrl}/metrics`, { headers: fetchHeaders });
+    const [res, processRes] = await Promise.all([
+      fetchWithRetry(`${agentUrl}/metrics`, { headers: fetchHeaders }),
+      fetchWithRetry(`${agentUrl}/processes`, { headers: fetchHeaders }).catch(() => null),
+    ]);
 
     if (!res.ok) throw new Error(`Agent returned ${res.status}`);
     const agentData = await res.json();
+    const processData = processRes && processRes.ok ? await processRes.json() : null;
     const responseTime = Date.now() - start;
 
     // Expected: { cpu_percent, cpu_cores, memory: { total_mb, used_mb, available_mb, percent }, disks: [...], load_average: { load_1, load_5, load_15 }, hostname }
@@ -76,8 +80,12 @@ Deno.serve(async (req) => {
       cpu_percent: cpuPercent,
       cpu_cores: agentData.cpu_cores,
       memory: agentData.memory,
+      swap: agentData.swap || null,
       disks,
       load_average: agentData.load_average,
+      network: agentData.network || [],
+      uptime_seconds: agentData.uptime_seconds || 0,
+      processes: processData?.processes || [],
       agent_url: agentUrl,
     };
 

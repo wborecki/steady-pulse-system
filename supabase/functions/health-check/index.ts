@@ -360,6 +360,12 @@ Deno.serve(async (req) => {
           checkResult = result;
           break;
         }
+        case "server": {
+          const result = await delegateToFunction("server-metrics");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
         default: {
           if (service.url) {
             checkResult = await checkHttp(service.url, service.check_config || {}, httpRules);

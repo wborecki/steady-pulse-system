@@ -5,9 +5,10 @@ import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck }
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { type ServiceStatus } from '@/data/mockData';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
+import { MetricsBarChart, DagDurationChart } from '@/components/monitoring/AirflowCharts';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench, Download, ArrowUpCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -16,8 +17,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 
-function MetricCard({ label, value, unit, color }: { label: string; value: number | string; unit: string; color: string }) {
+function MetricCard({ label, value, unit, color, invertBar }: { label: string; value: number | string; unit: string; color: string; invertBar?: boolean }) {
   const numVal = typeof value === 'string' ? parseFloat(value) : value;
+  const barColor = invertBar
+    ? (numVal >= 80 ? 'bg-success' : numVal >= 60 ? 'bg-warning' : 'bg-destructive')
+    : (numVal >= 85 ? 'bg-destructive' : numVal >= 70 ? 'bg-warning' : 'bg-primary');
   return (
     <Card className="glass-card">
       <CardContent className="p-4 text-center">
@@ -25,7 +29,7 @@ function MetricCard({ label, value, unit, color }: { label: string; value: numbe
         <p className={`text-3xl font-heading font-bold ${color}`}>{typeof value === 'number' ? value : numVal.toFixed(1)}<span className="text-sm">{unit}</span></p>
         {!isNaN(numVal) && unit === '%' && (
           <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${numVal >= 85 ? 'bg-destructive' : numVal >= 70 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${Math.min(numVal, 100)}%` }} />
+            <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(numVal, 100)}%` }} />
           </div>
         )}
       </CardContent>
@@ -41,19 +45,68 @@ interface DiskInfo {
   percent?: number;
 }
 
+interface SwapInfo {
+  total_mb?: number;
+  used_mb?: number;
+  free_mb?: number;
+  percent?: number;
+}
+
+interface NetworkInterface {
+  interface: string;
+  rx_bytes?: number;
+  tx_bytes?: number;
+  rx_mb?: number;
+  tx_mb?: number;
+}
+
+interface ProcessInfo {
+  pid?: number;
+  user?: string;
+  cpu?: number;
+  mem?: number;
+  vsz_mb?: number;
+  rss_mb?: number;
+  command?: string;
+}
+
 interface ServerInfo {
   hostname?: string;
   cpu_percent?: number;
   cpu_cores?: number;
   memory?: { total_mb?: number; used_mb?: number; available_mb?: number; percent?: number };
+  swap?: SwapInfo;
   disks?: DiskInfo[];
   load_average?: { load_1?: number; load_5?: number; load_15?: number };
+  network?: NetworkInterface[];
+  uptime_seconds?: number;
+  processes?: ProcessInfo[];
 }
 
-function ServerMetricsPanel({ server }: { server: ServerInfo }) {
+function ServerMetricsPanel({ server, showExtended = false }: { server: ServerInfo; showExtended?: boolean }) {
   const mem = server.memory || {};
   const load = server.load_average || {};
   const disks = server.disks || [];
+  const swap = server.swap;
+  const network = server.network || [];
+  const processes = server.processes || [];
+  const uptimeSec = server.uptime_seconds;
+
+  const formatUptime = (s: number) => {
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${bytes} B`;
+  };
 
   return (
     <div className="space-y-4">
@@ -153,6 +206,101 @@ function ServerMetricsPanel({ server }: { server: ServerInfo }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Swap & Uptime */}
+      {(swap || uptimeSec != null) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {swap && (
+            <Card className="glass-card">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Swap</p>
+                <p className="text-2xl font-heading font-bold text-warning">{swap.percent?.toFixed(1) ?? 0}<span className="text-sm">%</span></p>
+                <p className="text-[10px] font-mono text-muted-foreground">{swap.used_mb?.toFixed(0) ?? 0} / {swap.total_mb?.toFixed(0) ?? 0} MB</p>
+                {(swap.total_mb ?? 0) > 0 && (
+                  <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${(swap.percent ?? 0) >= 80 ? 'bg-destructive' : (swap.percent ?? 0) >= 50 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${Math.min(swap.percent ?? 0, 100)}%` }} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          {uptimeSec != null && (
+            <Card className="glass-card">
+              <CardContent className="p-4 text-center">
+                <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Uptime do Servidor</p>
+                <p className="text-2xl font-heading font-bold text-success">{formatUptime(uptimeSec)}</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{Math.floor(uptimeSec / 86400)} dias</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Network Interfaces */}
+      {network.length > 0 && (
+        <Card className="glass-card">
+          <CardContent className="p-4">
+            <h3 className="font-heading font-semibold text-sm mb-3">
+              <Network className="h-4 w-4 inline mr-1" />Rede
+            </h3>
+            <table className="w-full text-sm font-mono">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground text-xs">
+                  <th className="p-2 text-left">Interface</th>
+                  <th className="p-2 text-right">RX (Recebido)</th>
+                  <th className="p-2 text-right">TX (Enviado)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {network.filter((n: NetworkInterface) => (n.rx_bytes ?? 0) > 0 || (n.tx_bytes ?? 0) > 0).map((n: NetworkInterface, i: number) => (
+                  <tr key={i} className="border-b border-border/50">
+                    <td className="p-2 text-xs font-semibold">{n.interface}</td>
+                    <td className="p-2 text-right text-xs text-primary">{formatBytes(n.rx_bytes ?? 0)}</td>
+                    <td className="p-2 text-right text-xs text-success">{formatBytes(n.tx_bytes ?? 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Top Processes (only for extended/server view) */}
+      {showExtended && processes.length > 0 && (
+        <Card className="glass-card">
+          <CardContent className="p-4">
+            <h3 className="font-heading font-semibold text-sm mb-3">
+              <Cpu className="h-4 w-4 inline mr-1" />Top Processos
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm font-mono">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-xs">
+                    <th className="p-2 text-left">PID</th>
+                    <th className="p-2 text-left">Usuário</th>
+                    <th className="p-2 text-right">CPU %</th>
+                    <th className="p-2 text-right">MEM %</th>
+                    <th className="p-2 text-right">RSS MB</th>
+                    <th className="p-2 text-left">Comando</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processes.map((p: ProcessInfo, i: number) => (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="p-2 text-xs">{p.pid}</td>
+                      <td className="p-2 text-xs">{p.user}</td>
+                      <td className="p-2 text-right text-xs">{p.cpu?.toFixed(1)}%</td>
+                      <td className="p-2 text-right text-xs">{p.mem?.toFixed(1)}%</td>
+                      <td className="p-2 text-right text-xs">{p.rss_mb?.toFixed(1)}</td>
+                      <td className="p-2 text-xs max-w-[250px] truncate">{p.command}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -167,6 +315,7 @@ const checkTypeLabels: Record<string, string> = {
   http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL Query',
   postgresql: 'PostgreSQL', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3', custom: 'Custom',
   lambda: 'Lambda', ecs: 'ECS', cloudwatch_alarms: 'CW Alarms', systemctl: 'Systemctl', container: 'Container',
+  server: 'Servidor', airflow: 'Airflow',
 };
 
 const periodOptions = [
@@ -186,7 +335,7 @@ function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
 }
 function isAgentType(checkType: string) {
-  return ['systemctl', 'container'].includes(checkType);
+  return ['systemctl', 'container', 'server'].includes(checkType);
 }
 function isAirflowType(checkType: string) {
   return checkType === 'airflow';
@@ -208,6 +357,7 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   cloudwatch_alarms: { cpu: true,  memory: true,  disk: true  }, // alarm/ok/insufficient mapped to cpu/mem/disk
   systemctl:         { cpu: true,  memory: true,  disk: true  },
   container:         { cpu: true,  memory: true,  disk: true  },
+  server:            { cpu: true,  memory: true,  disk: true  },
 };
 
 const ServiceDetail = () => {
@@ -453,9 +603,9 @@ const ServiceDetail = () => {
         {isAirflowType(checkType) ? (
           <>
             <MetricCard label="Pool Utilization" value={Number(service.cpu)} unit="%" color="text-primary" />
-            <MetricCard label="DAG Success Rate" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="DAG Success Rate" value={Number(service.memory)} unit="%" color="text-success" invertBar />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" invertBar />
           </>
         ) : checkType === 'sql_query' ? (
           <>
@@ -467,9 +617,9 @@ const ServiceDetail = () => {
         ) : checkType === 'postgresql' ? (
           <>
             <MetricCard label="Conexões %" value={Number(service.cpu)} unit="%" color="text-primary" />
-            <MetricCard label="Cache Hit" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Cache Hit" value={Number(service.memory)} unit="%" color="text-success" invertBar />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" invertBar />
           </>
         ) : checkType === 'mongodb' ? (
           <>
@@ -483,19 +633,19 @@ const ServiceDetail = () => {
             <MetricCard label="Latência (p50)" value={latencyPercentiles.p50} unit="ms" color="text-primary" />
             <MetricCard label="Latência (p95)" value={latencyPercentiles.p95} unit="ms" color="text-warning" />
             <MetricCard label="Latência (p99)" value={latencyPercentiles.p99} unit="ms" color="text-destructive" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
           </>
         ) : checkType === 'tcp' ? (
           <>
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
             <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
             <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
           </>
         ) : checkType === 'process' ? (
           <>
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
             <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
             <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
           </>
@@ -511,26 +661,26 @@ const ServiceDetail = () => {
             <MetricCard label="Error Rate" value={Number(service.cpu)} unit="%" color="text-destructive" />
             <MetricCard label="Duration Avg" value={Number(service.memory)} unit="ms" color="text-primary" />
             <MetricCard label="Throttles" value={Number(service.disk)} unit="" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
           </>
         ) : checkType === 'ecs' ? (
           <>
             <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" invertBar />
           </>
         ) : checkType === 'cloudwatch_alarms' ? (
           <>
             <MetricCard label="Em Alarme" value={Number(service.cpu)} unit="" color="text-destructive" />
             <MetricCard label="OK" value={Number(service.memory)} unit="" color="text-success" />
             <MetricCard label="Insuficiente" value={Number(service.disk)} unit="" color="text-warning" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" invertBar />
           </>
         ) : checkType === 's3' ? (
           <>
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
             <MetricCard label="No Estado" value={stateDuration} unit="" color="text-foreground" />
             <MetricCard label="Checks" value={history.length} unit="" color="text-muted-foreground" />
           </>
@@ -548,10 +698,17 @@ const ServiceDetail = () => {
             <MetricCard label="Disco Servidor" value={Number(service.disk)} unit="%" color="text-warning" />
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
           </>
+        ) : checkType === 'server' ? (
+          <>
+            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
+            <MetricCard label="RAM" value={Number(service.memory)} unit="%" color="text-success" />
+            <MetricCard label="Disco" value={Number(service.disk)} unit="%" color="text-warning" />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-foreground" />
+          </>
         ) : (
           <>
             <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-primary" />
-            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+            <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
             <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-warning" />
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-foreground" />
           </>
@@ -634,7 +791,7 @@ const ServiceDetail = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
               <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
-              <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" />
+              <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-success" invertBar />
               <Card className="glass-card">
                 <CardContent className="p-4 text-center">
                   <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Instância</p>
@@ -784,6 +941,75 @@ const ServiceDetail = () => {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Daily Stats Bar Chart - Sucesso vs Falhas por Dia */}
+            {details.daily_stats?.length > 0 && (
+              <div className="glass-card rounded-lg p-4">
+                <MetricsBarChart data={details.daily_stats} title="Execuções por Dia (Sucesso vs Falhas)" />
+              </div>
+            )}
+
+            {/* DAG Durations Chart */}
+            {details.dag_durations?.length > 0 && (
+              <div className="glass-card rounded-lg p-4">
+                <DagDurationChart data={details.dag_durations} title="Duração das DAGs no Tempo" />
+              </div>
+            )}
+
+            {/* Individual DAGs Table */}
+            {details.dags_detail?.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">DAGs Individuais</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="p-2 text-left">DAG ID</th>
+                          <th className="p-2 text-left">Status</th>
+                          <th className="p-2 text-left">Schedule</th>
+                          <th className="p-2 text-left">Último Run</th>
+                          <th className="p-2 text-right">Duração</th>
+                          <th className="p-2 text-left">Tags</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.dags_detail.map((dag: any, i: number) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="p-2 text-xs max-w-[200px] truncate">{dag.dag_id}</td>
+                            <td className="p-2">
+                              {dag.is_paused ? (
+                                <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">Pausada</span>
+                              ) : dag.last_run_state === 'success' ? (
+                                <span className="text-xs px-2 py-0.5 rounded bg-success/20 text-success">Sucesso</span>
+                              ) : dag.last_run_state === 'failed' ? (
+                                <span className="text-xs px-2 py-0.5 rounded bg-destructive/20 text-destructive">Falha</span>
+                              ) : dag.last_run_state === 'running' ? (
+                                <span className="text-xs px-2 py-0.5 rounded bg-primary/20 text-primary">Executando</span>
+                              ) : (
+                                <span className="text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground">{dag.last_run_state || 'N/A'}</span>
+                              )}
+                            </td>
+                            <td className="p-2 text-xs">{dag.schedule_interval || '-'}</td>
+                            <td className="p-2 text-xs">{dag.last_run_date ? new Date(dag.last_run_date).toLocaleString('pt-BR') : '-'}</td>
+                            <td className="p-2 text-right text-xs">
+                              {dag.last_run_duration_seconds != null
+                                ? dag.last_run_duration_seconds < 60
+                                  ? `${dag.last_run_duration_seconds.toFixed(0)}s`
+                                  : `${(dag.last_run_duration_seconds / 60).toFixed(1)}min`
+                                : '-'}
+                            </td>
+                            <td className="p-2 text-xs">
+                              {dag.tags?.map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ') || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         );
       })()}
@@ -1363,6 +1589,25 @@ const ServiceDetail = () => {
           </div>
         );
       })()}
+
+      {/* Server (standalone) Details */}
+      {checkType === 'server' && (() => {
+        const details = (config as any)?._server_details;
+        if (!details) return null;
+        const serverData: ServerInfo = {
+          hostname: details.hostname,
+          cpu_percent: details.cpu_percent,
+          cpu_cores: details.cpu_cores,
+          memory: details.memory,
+          swap: details.swap,
+          disks: details.disks,
+          load_average: details.load_average,
+          network: details.network,
+          uptime_seconds: details.uptime_seconds,
+          processes: details.processes,
+        };
+        return <ServerMetricsPanel server={serverData} showExtended />;
+      })()}
       {/* eslint-enable @typescript-eslint/no-explicit-any */}
 
       {isHttpType(checkType) && history.length > 0 && (
@@ -1422,6 +1667,7 @@ const ServiceDetail = () => {
                   checkType === 'mongodb' ? "Conexões (%)" :
                   checkType === 'systemctl' ? "CPU Servidor (%)" :
                   checkType === 'container' ? "CPU Containers (%)" :
+                  checkType === 'server' ? "CPU Servidor (%)" :
                   checkType === 'lambda' ? "Error Rate (%)" :
                   checkType === 'cloudwatch_alarms' ? "Alarmes Ativos" :
                   checkType === 'ecs' ? "CPU ECS (%)" :
@@ -1437,6 +1683,7 @@ const ServiceDetail = () => {
                   checkType === 'mongodb' ? "Memória (%)" :
                   checkType === 'systemctl' ? "RAM Servidor (%)" :
                   checkType === 'container' ? "Memória Containers (%)" :
+                  checkType === 'server' ? "RAM Servidor (%)" :
                   checkType === 'lambda' ? "Duration Avg (ms)" :
                   checkType === 'cloudwatch_alarms' ? "Alarmes OK" :
                   checkType === 'ecs' ? "Memória ECS (%)" :

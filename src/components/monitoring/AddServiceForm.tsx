@@ -21,7 +21,7 @@ const categoryCheckTypes: Record<string, string[]> = {
   aws: ['cloudwatch', 's3', 'lambda', 'ecs', 'cloudwatch_alarms'],
   database: ['sql_query', 'postgresql', 'mongodb'],
   airflow: ['airflow'],
-  server: ['systemctl', 'tcp', 'process'],
+  server: ['server', 'systemctl', 'tcp', 'process'],
   process: ['process'],
   api: ['http'],
   container: ['container'],
@@ -42,6 +42,7 @@ const checkTypeLabels: Record<string, string> = {
   cloudwatch_alarms: 'CloudWatch Alarms',
   systemctl: 'Systemctl (Linux)',
   container: 'Docker / Container',
+  server: 'Métricas do Servidor',
 };
 
 interface ServiceFormData {
@@ -235,6 +236,12 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           token: (form.get('agent_token') as string) || undefined,
         };
         break;
+      case 'server':
+        checkConfig = {
+          agent_url: form.get('agent_url') as string,
+          token: (form.get('agent_token') as string) || undefined,
+        };
+        break;
     }
 
     const serviceData = {
@@ -350,6 +357,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
 
       {/* Container fields */}
       {checkType === 'container' && <ContainerFields />}
+      {checkType === 'server' && <ServerFields />}
 
       {/* Interval */}
       <div className="space-y-2">
@@ -883,14 +891,16 @@ function CloudWatchAlarmsFields() {
   );
 }
 
-function AgentInstallInstructions() {
+function AgentInstallInstructions({ token }: { token?: string }) {
+  const installCmd = `curl -fsSL https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/install-agent.sh | sudo bash -s --${token ? ` --token ${token}` : ' --token SEU_TOKEN'}`;
+
   return (
     <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-2">
       <p className="text-xs font-medium text-foreground">📦 Instalação Rápida (one-liner)</p>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">Execute no servidor:</p>
-        <code className="block text-[10px] bg-background p-2 rounded border border-border font-mono break-all select-all">
-          curl -fsSL https://raw.githubusercontent.com/SEU_REPO/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
+        <code className="block text-[10px] bg-background p-2 rounded border border-border font-mono break-all select-all cursor-pointer" onClick={() => { navigator.clipboard.writeText(installCmd); toast.success('Comando copiado!'); }}>
+          {installCmd}
         </code>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -1023,7 +1033,7 @@ function SystemctlFields() {
         }} />
       </div>
       <input type="hidden" name="agent_endpoint" value="/systemctl" />
-      <AgentInstallInstructions />
+      <AgentInstallInstructions token={agentToken} />
     </div>
   );
 }
@@ -1064,7 +1074,31 @@ function ContainerFields() {
       )}
 
       <input type="hidden" name="agent_endpoint" value="/containers" />
-      <AgentInstallInstructions />
+      <AgentInstallInstructions token={agentToken} />
+    </div>
+  );
+}
+
+function ServerFields() {
+  const [agentUrl, setAgentUrl] = useState('');
+  const [agentToken, setAgentToken] = useState('');
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+        <p className="text-xs text-foreground">
+          📊 <strong>Métricas do Servidor</strong> — Monitora CPU, RAM, Swap, Disco, Rede, Load Average e Top Processos automaticamente.
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label>URL do Agente</Label>
+        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
+      </div>
+      <div className="space-y-2">
+        <Label>Token de Autenticação (opcional)</Label>
+        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
+      </div>
+      <AgentInstallInstructions token={agentToken} />
     </div>
   );
 }

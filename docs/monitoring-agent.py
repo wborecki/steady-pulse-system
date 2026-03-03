@@ -10,10 +10,14 @@ Usage:
         AGENT_TOKEN=your_secret_token
 
 Endpoints:
-    POST /systemctl   — returns status of specified systemd services
-    GET  /containers  — returns Docker container stats (auto-discovery)
-    GET  /metrics     — returns server metrics (CPU, RAM, disk, load average)
-    GET  /health      — agent health check
+    POST /systemctl     — returns status of specified systemd services
+    GET  /systemctl/list — auto-discovery of running systemd services
+    GET  /containers    — returns Docker container stats (auto-discovery)
+    GET  /metrics       — returns server metrics (CPU, RAM, swap, disk, load, network, uptime)
+    GET  /processes     — returns top processes by CPU/memory
+    GET  /health        — agent health check
+    GET  /version       — current agent version
+    POST /update        — self-update from GitHub
 
 Install as systemd service:
     curl -fsSL https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
@@ -32,7 +36,8 @@ import urllib.request
 # Configuration
 # ---------------------------------------------------------------------------
 
-AGENT_VERSION = "2.0.0"
+AGENT_VERSION = "2.1.0"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/monitoring-agent.py"
 
 
 def get_config():
@@ -98,6 +103,31 @@ def get_memory_info() -> dict:
         return {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percent": 0}
 
 
+def get_swap_info() -> dict:
+    """Get swap info from /proc/meminfo."""
+    try:
+        info = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                parts = line.split(":")
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val = parts[1].strip().split()[0]
+                    info[key] = int(val)  # in kB
+
+        total = info.get("SwapTotal", 0)
+        free = info.get("SwapFree", 0)
+        used = total - free
+        return {
+            "total_mb": round(total / 1024, 2),
+            "used_mb": round(used / 1024, 2),
+            "free_mb": round(free / 1024, 2),
+            "percent": round((used / total) * 100, 2) if total > 0 else 0,
+        }
+    except Exception:
+        return {"total_mb": 0, "used_mb": 0, "free_mb": 0, "percent": 0}
+
+
 def get_disk_info() -> list:
     """Get disk usage via df command."""
     try:
@@ -135,6 +165,45 @@ def get_load_average() -> dict:
         return {"load_1": 0, "load_5": 0, "load_15": 0}
 
 
+def get_network_info() -> list:
+    """Get network interface stats from /proc/net/dev."""
+    try:
+        interfaces = []
+        with open("/proc/net/dev") as f:
+            lines = f.readlines()[2:]  # skip header lines
+        for line in lines:
+            parts = line.split(":")
+            if len(parts) != 2:
+                continue
+            iface = parts[0].strip()
+            if iface == "lo":
+                continue  # skip loopback
+            vals = parts[1].split()
+            if len(vals) < 10:
+                continue
+            rx_bytes = int(vals[0])
+            tx_bytes = int(vals[8])
+            interfaces.append({
+                "interface": iface,
+                "rx_bytes": rx_bytes,
+                "tx_bytes": tx_bytes,
+                "rx_mb": round(rx_bytes / (1024 * 1024), 2),
+                "tx_mb": round(tx_bytes / (1024 * 1024), 2),
+            })
+        return interfaces
+    except Exception:
+        return []
+
+
+def get_uptime_seconds() -> float:
+    """Get system uptime from /proc/uptime."""
+    try:
+        with open("/proc/uptime") as f:
+            return round(float(f.readline().split()[0]), 2)
+    except Exception:
+        return 0.0
+
+
 def get_server_metrics() -> dict:
     """Collect all server metrics."""
     cpu_cores = os.cpu_count() or 1
@@ -142,11 +211,50 @@ def get_server_metrics() -> dict:
         "cpu_percent": get_cpu_percent(),
         "cpu_cores": cpu_cores,
         "memory": get_memory_info(),
+        "swap": get_swap_info(),
         "disks": get_disk_info(),
         "load_average": get_load_average(),
+        "network": get_network_info(),
+        "uptime_seconds": get_uptime_seconds(),
         "hostname": socket.gethostname(),
         "timestamp": time.time(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Process helpers
+# ---------------------------------------------------------------------------
+
+
+def get_top_processes(limit: int = 10) -> list:
+    """Get top processes by CPU and memory usage."""
+    try:
+        result = subprocess.run(
+            ["ps", "aux", "--sort=-%cpu"],
+            capture_output=True, text=True, timeout=5,
+        )
+        processes = []
+        lines = result.stdout.strip().split("\n")[1:]  # skip header
+        for line in lines[:limit]:
+            parts = line.split(None, 10)
+            if len(parts) < 11:
+                continue
+            try:
+                processes.append({
+                    "user": parts[0],
+                    "pid": int(parts[1]),
+                    "cpu_percent": float(parts[2]),
+                    "memory_percent": float(parts[3]),
+                    "vsz_mb": round(int(parts[4]) / 1024, 1),
+                    "rss_mb": round(int(parts[5]) / 1024, 1),
+                    "state": parts[7],
+                    "command": parts[10][:120],
+                })
+            except (ValueError, IndexError):
+                continue
+        return processes
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +337,7 @@ def list_systemd_services() -> list[dict]:
         for line in result.stdout.strip().split("\n"):
             parts = line.split()
             if len(parts) >= 4:
-                name = parts[0]  # e.g. nginx.service
+                name = parts[0]
                 sub_state = parts[3] if len(parts) > 3 else "unknown"
                 description = " ".join(parts[4:]) if len(parts) > 4 else ""
                 services.append({
@@ -293,7 +401,6 @@ def get_containers() -> list[dict]:
         state = c.get("State", "unknown")
         created = c.get("Created", 0)
 
-        # Get health + restart count from inspect
         health = None
         restart_count = 0
         inspect = docker_api_get(f"/containers/{c['Id']}/json")
@@ -302,7 +409,6 @@ def get_containers() -> list[dict]:
                 health = inspect["State"]["Health"].get("Status")
             restart_count = inspect.get("RestartCount", 0)
 
-        # Get stats (one-shot)
         cpu_percent = 0.0
         memory_percent = 0.0
         memory_mb = 0.0
@@ -352,6 +458,67 @@ def get_containers() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Self-update helpers
+# ---------------------------------------------------------------------------
+
+
+def get_remote_version() -> str | None:
+    """Fetch the version from the latest agent on GitHub."""
+    try:
+        req = urllib.request.Request(GITHUB_RAW_URL, headers={"User-Agent": "monitoring-agent"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            for line in resp.read().decode().split("\n"):
+                if line.startswith("AGENT_VERSION"):
+                    return line.split('"')[1]
+        return None
+    except Exception:
+        return None
+
+
+def perform_update() -> dict:
+    """Download latest agent from GitHub and restart the service."""
+    try:
+        remote_version = get_remote_version()
+        if remote_version is None:
+            return {"success": False, "error": "Could not fetch remote version"}
+
+        if remote_version == AGENT_VERSION:
+            return {"success": True, "updated": False, "current_version": AGENT_VERSION, "latest_version": remote_version, "message": "Already up to date"}
+
+        agent_path = "/opt/monitoring-agent/monitoring-agent.py"
+        tmp_path = "/tmp/monitoring-agent-update.py"
+
+        req = urllib.request.Request(GITHUB_RAW_URL, headers={"User-Agent": "monitoring-agent"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            with open(tmp_path, "wb") as f:
+                f.write(resp.read())
+
+        with open(tmp_path) as f:
+            content = f.read()
+        if "AGENT_VERSION" not in content or "def main()" not in content:
+            os.remove(tmp_path)
+            return {"success": False, "error": "Downloaded file appears invalid"}
+
+        os.replace(tmp_path, agent_path)
+        os.chmod(agent_path, 0o755)
+
+        subprocess.Popen(
+            ["systemctl", "restart", "monitoring-agent"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+        return {
+            "success": True,
+            "updated": True,
+            "current_version": AGENT_VERSION,
+            "latest_version": remote_version,
+            "message": f"Updated from {AGENT_VERSION} to {remote_version}. Restarting...",
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # HTTP Server
 # ---------------------------------------------------------------------------
 
@@ -387,7 +554,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ok",
                 "version": AGENT_VERSION,
                 "timestamp": time.time(),
-                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics"],
+                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics", "/processes", "/version", "/update"],
             })
         elif self.path == "/systemctl/list":
             services = list_systemd_services()
@@ -398,6 +565,16 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/metrics":
             metrics = get_server_metrics()
             self.send_json(metrics)
+        elif self.path == "/processes":
+            processes = get_top_processes()
+            self.send_json({"processes": processes})
+        elif self.path == "/version":
+            remote = get_remote_version()
+            self.send_json({
+                "current_version": AGENT_VERSION,
+                "latest_version": remote,
+                "update_available": remote is not None and remote != AGENT_VERSION,
+            })
         else:
             self.send_json({"error": "not found"}, 404)
 
@@ -421,6 +598,9 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 
             units = [get_systemctl_unit(svc) for svc in services]
             self.send_json({"units": units})
+        elif self.path == "/update":
+            result = perform_update()
+            self.send_json(result, 200 if result.get("success") else 500)
         else:
             self.send_json({"error": "not found"}, 404)
 
@@ -435,7 +615,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 def main():
     server = http.server.HTTPServer(("0.0.0.0", CONFIG.port), AgentHandler)
     print(f"🚀 Monitoring Agent v{AGENT_VERSION} running on port {CONFIG.port}")
-    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics")
+    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics, /processes, /version, /update")
     if CONFIG.token:
         print(f"🔒 Authentication enabled (token required)")
     else:

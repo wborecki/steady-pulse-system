@@ -20,7 +20,8 @@ const statusLabels: Record<string, string> = {
 const checkTypeLabels: Record<string, string> = {
   http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL',
   postgresql: 'PostgreSQL', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3',
-  custom: 'Custom',
+  custom: 'Custom', server: 'Servidor', systemctl: 'Systemctl', container: 'Container',
+  airflow: 'Airflow', lambda: 'Lambda', ecs: 'ECS', cloudwatch_alarms: 'CW Alarms',
 };
 
 interface ServiceLike {
@@ -63,6 +64,13 @@ function getBarColor(value: number) {
   return 'bg-primary';
 }
 
+// For metrics where high = good (DAG success rate, Cache Hit, OK alarms)
+function getBarColorInverted(value: number) {
+  if (value >= 80) return 'bg-success';
+  if (value >= 60) return 'bg-warning';
+  return 'bg-destructive';
+}
+
 function getTimeSinceCheck(lastCheck: string | null): { text: string; color: string } {
   if (!lastCheck) return { text: 'Nunca', color: 'text-muted-foreground' };
   const diffMin = Math.round((Date.now() - new Date(lastCheck).getTime()) / 60000);
@@ -88,6 +96,7 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   cloudwatch_alarms: { cpu: true, memory: true, disk: true },
   systemctl: { cpu: true, memory: true, disk: true },
   container: { cpu: true, memory: true, disk: true },
+  server: { cpu: true, memory: true, disk: true },
 };
 
 // Contextual labels per check_type
@@ -98,6 +107,14 @@ const metricLabels: Record<string, { cpu: string; memory: string; disk: string }
   lambda: { cpu: 'Erros', memory: 'Duração', disk: 'Throttle' },
   ecs: { cpu: 'CPU', memory: 'MEM', disk: 'Disco' },
   cloudwatch_alarms: { cpu: 'Alarme', memory: 'OK', disk: 'Insuf.' },
+  server: { cpu: 'CPU', memory: 'RAM', disk: 'Disco' },
+};
+
+// Metrics where high value = good (inverted color logic)
+const invertedMetrics: Record<string, { cpu: boolean; memory: boolean; disk: boolean }> = {
+  airflow: { cpu: false, memory: true, disk: false },     // DAG success rate
+  postgresql: { cpu: false, memory: true, disk: false },   // Cache Hit
+  cloudwatch_alarms: { cpu: false, memory: true, disk: false }, // OK count
 };
 
 const defaultLabels = { cpu: 'CPU', memory: 'MEM', disk: 'Disco' };
@@ -154,11 +171,12 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
             (() => {
               const m = getCollectedMetrics(service);
               const labels = getMetricLabels(service.check_type);
+              const inv = invertedMetrics[service.check_type || ''] || { cpu: false, memory: false, disk: false };
               return (
                 <>
-                  {m.cpu && <MetricBar value={Number(service.cpu)} label={labels.cpu} color={getBarColor(Number(service.cpu))} />}
-                  {m.memory && <MetricBar value={Number(service.memory)} label={labels.memory} color={getBarColor(Number(service.memory))} />}
-                  {m.disk && <MetricBar value={Number(service.disk)} label={labels.disk} color={getBarColor(Number(service.disk))} />}
+                  {m.cpu && <MetricBar value={Number(service.cpu)} label={labels.cpu} color={inv.cpu ? getBarColorInverted(Number(service.cpu)) : getBarColor(Number(service.cpu))} />}
+                  {m.memory && <MetricBar value={Number(service.memory)} label={labels.memory} color={inv.memory ? getBarColorInverted(Number(service.memory)) : getBarColor(Number(service.memory))} />}
+                  {m.disk && <MetricBar value={Number(service.disk)} label={labels.disk} color={inv.disk ? getBarColorInverted(Number(service.disk)) : getBarColor(Number(service.disk))} />}
                 </>
               );
             })()

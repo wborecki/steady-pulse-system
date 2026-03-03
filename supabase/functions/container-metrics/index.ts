@@ -112,8 +112,11 @@ Deno.serve(async (req) => {
         cpu_percent: serverMetrics.cpu_percent,
         cpu_cores: serverMetrics.cpu_cores,
         memory: serverMetrics.memory,
+        swap: serverMetrics.swap || null,
         disks: serverMetrics.disks,
         load_average: serverMetrics.load_average,
+        network: serverMetrics.network || [],
+        uptime_seconds: serverMetrics.uptime_seconds || 0,
       };
     }
 

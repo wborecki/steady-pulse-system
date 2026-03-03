@@ -121,7 +121,7 @@ async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) 
   const activeDags = dags.filter((d: any) => !d.is_paused).length;
   const pausedDags = dags.filter((d: any) => d.is_paused).length;
 
-  // 3. Recent DAG Runs
+  // 3. Recent DAG Runs (last 50 for quick stats)
   let runs: any[] = [];
   try {
     const runsData = await airflowFetch(baseUrl, `${apiPrefix}/dags/~/dagRuns?limit=50&order_by=-start_date`, authHeader);
@@ -131,6 +131,91 @@ async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) 
   const failedRuns = runs.filter((r: any) => r.state === "failed").length;
   const runningRuns = runs.filter((r: any) => r.state === "running").length;
   const successRate = runs.length > 0 ? Math.round((successRuns / runs.length) * 100) : 100;
+
+  // 3b. Extended DAG Runs (last 7 days, up to 500) for daily stats chart
+  let dailyStats: { date: string; success: number; failed: number; running: number }[] = [];
+  let allRuns: any[] = [];
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const extRunsData = await airflowFetch(baseUrl, `${apiPrefix}/dags/~/dagRuns?limit=500&order_by=-start_date&start_date_gte=${encodeURIComponent(sevenDaysAgo)}`, authHeader);
+    allRuns = extRunsData.dag_runs || [];
+
+    // Group by date
+    const byDate: Record<string, { success: number; failed: number; running: number }> = {};
+    for (const r of allRuns) {
+      const date = (r.start_date || r.execution_date || "").substring(0, 10);
+      if (!date) continue;
+      if (!byDate[date]) byDate[date] = { success: 0, failed: 0, running: 0 };
+      if (r.state === "success") byDate[date].success++;
+      else if (r.state === "failed") byDate[date].failed++;
+      else if (r.state === "running") byDate[date].running++;
+    }
+    dailyStats = Object.entries(byDate)
+      .map(([date, counts]) => ({ date, ...counts }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch { /* optional */ }
+
+  // 3c. DAG details — individual DAG info + last run duration
+  let dagsDetail: any[] = [];
+  try {
+    dagsDetail = dags.map((d: any) => ({
+      dag_id: d.dag_id,
+      is_paused: d.is_paused,
+      owners: d.owners || [],
+      schedule_interval: d.schedule_interval || d.timetable_description || null,
+      next_dagrun: d.next_dagrun || null,
+      file_token: d.file_token || null,
+      tags: (d.tags || []).map((t: any) => t.name || t),
+    }));
+  } catch { /* optional */ }
+
+  // 3d. DAG durations (from extended runs)
+  let dagDurations: { dag_id: string; runs: { date: string; duration_seconds: number }[] }[] = [];
+  try {
+    const durationByDag: Record<string, { date: string; duration_seconds: number }[]> = {};
+    for (const r of allRuns) {
+      if (r.state !== "success" && r.state !== "failed") continue;
+      const dagId = r.dag_id;
+      const date = (r.start_date || r.execution_date || "").substring(0, 10);
+      if (!date || !dagId) continue;
+
+      let duration = 0;
+      if (r.duration != null) {
+        duration = Math.round(r.duration);
+      } else if (r.start_date && r.end_date) {
+        duration = Math.round((new Date(r.end_date).getTime() - new Date(r.start_date).getTime()) / 1000);
+      }
+      if (duration <= 0) continue;
+
+      if (!durationByDag[dagId]) durationByDag[dagId] = [];
+      durationByDag[dagId].push({ date, duration_seconds: duration });
+    }
+    dagDurations = Object.entries(durationByDag).map(([dag_id, runs]) => ({
+      dag_id,
+      runs: runs.sort((a, b) => a.date.localeCompare(b.date)).slice(-20), // last 20 runs per DAG
+    }));
+  } catch { /* optional */ }
+
+  // 3e. Enrich dagsDetail with last run info
+  try {
+    const lastRunByDag: Record<string, any> = {};
+    for (const r of allRuns) {
+      if (!lastRunByDag[r.dag_id]) lastRunByDag[r.dag_id] = r;
+    }
+    dagsDetail = dagsDetail.map((d: any) => {
+      const lastRun = lastRunByDag[d.dag_id];
+      if (!lastRun) return d;
+      let duration = 0;
+      if (lastRun.duration != null) duration = Math.round(lastRun.duration);
+      else if (lastRun.start_date && lastRun.end_date) duration = Math.round((new Date(lastRun.end_date).getTime() - new Date(lastRun.start_date).getTime()) / 1000);
+      return {
+        ...d,
+        last_run_state: lastRun.state,
+        last_run_date: lastRun.start_date || lastRun.execution_date,
+        last_run_duration_seconds: duration,
+      };
+    });
+  } catch { /* optional */ }
 
   // 4. Import errors
   let importErrors = 0;
@@ -187,6 +272,9 @@ async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) 
       recent_runs: { total: runs.length, success: successRuns, failed: failedRuns, running: runningRuns, success_rate: successRate },
       import_errors: importErrors,
       pool_utilization: poolUtilization,
+      daily_stats: dailyStats,
+      dags_detail: dagsDetail,
+      dag_durations: dagDurations,
     },
     error_message: null,
   };
