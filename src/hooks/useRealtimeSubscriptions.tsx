@@ -1,13 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { RealtimeConnectedContext } from './useRealtimeStatus';
 
 /**
- * Hook that subscribes to Supabase Realtime changes on services, alerts, and health_checks
+ * Component that subscribes to Supabase Realtime changes on services, alerts, and health_checks
  * and automatically invalidates the relevant React Query caches.
+ * Provides RealtimeConnectedContext so hooks can disable polling when Realtime is active.
  */
-export function useRealtimeSubscriptions() {
+export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
+  const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     const channel = supabase
@@ -25,10 +28,19 @@ export function useRealtimeSubscriptions() {
         qc.invalidateQueries({ queryKey: ['health_checks_filtered'] });
         qc.invalidateQueries({ queryKey: ['health_checks_period'] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        setConnected(status === 'SUBSCRIBED');
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      setConnected(false);
     };
   }, [qc]);
+
+  return (
+    <RealtimeConnectedContext.Provider value={connected}>
+      {children}
+    </RealtimeConnectedContext.Provider>
+  );
 }

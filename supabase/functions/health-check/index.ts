@@ -207,9 +207,11 @@ Deno.serve(async (req) => {
     const { data: httpRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "http").single();
     const httpRules = httpRuleRow ? { warning_rules: httpRuleRow.warning_rules as Record<string, number>, offline_rules: httpRuleRow.offline_rules as Record<string, number> } : undefined;
 
-    const results = [];
+    const BATCH_SIZE = 5;
+    const results: Array<Record<string, unknown>> = [];
 
-    for (const service of eligibleServices as Service[]) {
+    // Process a single service — extracted for parallelism
+    async function processService(service: Service) {
       // Immediately stamp last_check to prevent concurrent duplicate runs
       await supabase.from("services").update({ last_check: new Date().toISOString() }).eq("id", service.id);
 
@@ -732,6 +734,12 @@ Deno.serve(async (req) => {
         uptime,
         ...checkResult,
       });
+    } // end processService
+
+    // Process services in parallel batches of BATCH_SIZE
+    for (let i = 0; i < (eligibleServices as Service[]).length; i += BATCH_SIZE) {
+      const batch = (eligibleServices as Service[]).slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(batch.map(svc => processService(svc)));
     }
 
     return new Response(JSON.stringify({ checked: results.length, results }), {

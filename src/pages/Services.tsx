@@ -10,10 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { ServicesSkeleton } from '@/components/monitoring/ServicesSkeleton';
 
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
   server: 'Servidores', process: 'Processos', api: 'APIs',
+  container: 'Containers', infra: 'Infraestrutura',
 };
 
 const statusLabels: Record<string, string> = {
@@ -95,7 +97,7 @@ const Services = () => {
 
       <div className="space-y-2">
         {isLoading ? (
-          <p className="text-center py-12 text-muted-foreground font-mono">Carregando...</p>
+          <ServicesSkeleton />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground space-y-4">
             <Server className="h-12 w-12 mx-auto text-muted-foreground/50" />

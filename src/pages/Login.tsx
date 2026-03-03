@@ -1,20 +1,41 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, LogIn } from 'lucide-react';
+import { Shield, LogIn, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast({ title: 'Informe seu email', description: 'Preencha o campo de email antes de solicitar a recuperação.', variant: 'destructive' });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/login`,
+      });
+      if (error) throw error;
+      toast({ title: 'Email enviado', description: 'Verifique sua caixa de entrada para redefinir a senha.' });
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível enviar o email de recuperação.', variant: 'destructive' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +91,15 @@ export default function Login() {
               <LogIn className="h-4 w-4 mr-2" />
               {isLoading ? 'Entrando...' : 'Entrar'}
             </Button>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={resetLoading}
+              className="w-full text-xs text-muted-foreground hover:text-primary transition-colors mt-2 flex items-center justify-center gap-1.5"
+            >
+              <Mail className="h-3 w-3" />
+              {resetLoading ? 'Enviando...' : 'Esqueci minha senha'}
+            </button>
           </form>
         </CardContent>
       </Card>

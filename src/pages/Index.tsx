@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useServices } from '@/hooks/useServices';
 import { useAlerts } from '@/hooks/useAlerts';
-import { useTriggerHealthCheck, useAllRecentHealthChecks } from '@/hooks/useHealthChecks';
+import { useTriggerHealthCheck } from '@/hooks/useHealthChecks';
+import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { StatsCard } from '@/components/monitoring/StatsCard';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { CategoryBarChart } from '@/components/monitoring/CategoryBarChart';
@@ -12,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { DashboardSkeleton } from '@/components/monitoring/DashboardSkeleton';
 
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
@@ -24,7 +26,7 @@ const Index = () => {
   const { data: services = [], isLoading } = useServices();
   const { data: alertResult } = useAlerts();
   const alerts = alertResult?.data ?? [];
-  const { data: recentChecks = [] } = useAllRecentHealthChecks();
+  const { data: dashStats } = useDashboardStats(24);
   const triggerCheck = useTriggerHealthCheck();
 
   const stats = useMemo(() => {
@@ -38,13 +40,9 @@ const Index = () => {
   }, [services]);
 
   const slaStats = useMemo(() => {
-    if (recentChecks.length === 0) return { sla24h: '0' };
-    const now = Date.now();
-    const checks24h = recentChecks.filter(c => new Date(c.checked_at).getTime() > now - 24 * 3600000);
-    const available24h = checks24h.filter(c => c.status === 'online' || c.status === 'warning').length;
-    const sla24h = checks24h.length > 0 ? ((available24h / checks24h.length) * 100).toFixed(2) : '0';
-    return { sla24h };
-  }, [recentChecks]);
+    if (!dashStats) return { sla24h: '0' };
+    return { sla24h: String(dashStats.sla_percentage) };
+  }, [dashStats]);
 
   const criticalServices = useMemo(() => {
     return services
@@ -53,59 +51,35 @@ const Index = () => {
   }, [services]);
 
   const incidentsByCategory = useMemo(() => {
-    const map = new Map<string, number>();
-    recentChecks.forEach(c => {
-      if (c.status !== 'online') {
-        const svc = services.find(s => s.id === c.service_id);
-        if (svc) {
-          const cat = svc.category;
-          map.set(cat, (map.get(cat) || 0) + 1);
-        }
-      }
-    });
-    return Array.from(map.entries())
-      .map(([cat, count]) => ({ time: categoryLabels[cat] || cat, value: count }))
-      .sort((a, b) => b.value - a.value);
-  }, [recentChecks, services]);
+    if (!dashStats) return [];
+    return dashStats.incidents_by_category.map(c => ({
+      time: categoryLabels[c.category] || c.category,
+      value: c.incident_count,
+    }));
+  }, [dashStats]);
 
   const incidentTimeline = useMemo(() => {
-    const byHour = new Map<string, number>();
-    recentChecks.forEach(c => {
-      if (c.status !== 'online') {
-        const hour = new Date(c.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        byHour.set(hour, (byHour.get(hour) || 0) + 1);
-      }
-    });
-    return Array.from(byHour.entries()).map(([time, value]) => ({ time, value }));
-  }, [recentChecks]);
+    if (!dashStats) return [];
+    return dashStats.timeline
+      .filter(t => t.incidents > 0)
+      .map(t => ({ time: t.bucket, value: t.incidents }));
+  }, [dashStats]);
 
   const responseTimeChartData = useMemo(() => {
-    const byHour = new Map<string, { total: number; count: number }>();
-    recentChecks.forEach(h => {
-      const time = new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const entry = byHour.get(time) || { total: 0, count: 0 };
-      entry.total += (h.response_time ?? 0);
-      entry.count++;
-      byHour.set(time, entry);
-    });
-    return Array.from(byHour.entries()).map(([time, { total, count }]) => ({
-      time, value: Math.round(total / count),
+    if (!dashStats) return [];
+    return dashStats.timeline.map(t => ({
+      time: t.bucket,
+      value: t.avg_response_time,
     }));
-  }, [recentChecks]);
+  }, [dashStats]);
 
   const availabilityChartData = useMemo(() => {
-    const byHour = new Map<string, { online: number; total: number }>();
-    recentChecks.forEach(h => {
-      const time = new Date(h.checked_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const entry = byHour.get(time) || { online: 0, total: 0 };
-      if (h.status === 'online' || h.status === 'warning') entry.online++;
-      entry.total++;
-      byHour.set(time, entry);
-    });
-    return Array.from(byHour.entries()).map(([time, { online, total }]) => ({
-      time, value: Math.round((online / total) * 100),
+    if (!dashStats) return [];
+    return dashStats.timeline.map(t => ({
+      time: t.bucket,
+      value: t.availability_pct,
     }));
-  }, [recentChecks]);
+  }, [dashStats]);
 
   const unacknowledgedAlerts = alerts.filter(a => !a.acknowledged);
 
@@ -119,11 +93,7 @@ const Index = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-muted-foreground">Carregando...</p>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
