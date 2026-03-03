@@ -71,8 +71,8 @@ const SettingsPage = () => {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Intervalo de verificação</Label>
-                <p className="text-xs text-muted-foreground">Frequência de checagem dos serviços</p>
+                <Label>Intervalo de atualização do dashboard</Label>
+                <p className="text-xs text-muted-foreground">Frequência de refresh automático da interface (o intervalo de verificação de cada serviço é configurado individualmente)</p>
               </div>
               <Select value={interval} onValueChange={setInterval}>
                 <SelectTrigger className="w-36 bg-secondary border-border">

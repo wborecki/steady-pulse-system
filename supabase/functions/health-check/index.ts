@@ -13,6 +13,8 @@ interface Service {
   check_type: string;
   check_config: Record<string, unknown>;
   status: string;
+  check_interval_seconds: number;
+  last_check: string | null;
 }
 
 async function checkSslExpiry(url: string): Promise<{ days_until_expiry: number | null; issuer: string | null; valid_from: string | null; valid_to: string | null; error: string | null }> {
@@ -175,7 +177,7 @@ Deno.serve(async (req) => {
 
     let query = supabase
       .from("services")
-      .select("id, name, url, check_type, check_config, status")
+      .select("id, name, url, check_type, check_config, status, check_interval_seconds, last_check")
       .eq("enabled", true)
       .neq("status", "maintenance");
 
@@ -186,13 +188,24 @@ Deno.serve(async (req) => {
     const { data: services, error } = await query;
     if (error) throw error;
 
+    // Filter services respecting their individual check_interval_seconds
+    const now = Date.now();
+    const eligibleServices = (services || []).filter((s: any) => {
+      if (serviceId) return true;
+      if (!s.last_check) return true;
+      const lastCheckMs = new Date(s.last_check).getTime();
+      const intervalMs = (s.check_interval_seconds || 60) * 1000;
+      return (now - lastCheckMs) >= intervalMs;
+    });
+    if (error) throw error;
+
     // Pre-fetch HTTP rules for the loop
     const { data: httpRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "http").single();
     const httpRules = httpRuleRow ? { warning_rules: httpRuleRow.warning_rules as Record<string, number>, offline_rules: httpRuleRow.offline_rules as Record<string, number> } : undefined;
 
     const results = [];
 
-    for (const service of (services as Service[]) || []) {
+    for (const service of eligibleServices as Service[]) {
       let checkResult: {
         status: string;
         response_time: number;
