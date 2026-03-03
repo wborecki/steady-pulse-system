@@ -89,6 +89,22 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   container: { cpu: true, memory: true, disk: true },
 };
 
+// Contextual labels per check_type
+const metricLabels: Record<string, { cpu: string; memory: string; disk: string }> = {
+  airflow: { cpu: 'Pool', memory: 'DAG', disk: 'Disco' },
+  postgresql: { cpu: 'Conn', memory: 'Cache', disk: 'Disco' },
+  mongodb: { cpu: 'Conn', memory: 'MEM', disk: 'Disco' },
+  lambda: { cpu: 'Erros', memory: 'Duração', disk: 'Throttle' },
+  ecs: { cpu: 'CPU', memory: 'MEM', disk: 'Disco' },
+  cloudwatch_alarms: { cpu: 'Alarme', memory: 'OK', disk: 'Insuf.' },
+};
+
+const defaultLabels = { cpu: 'CPU', memory: 'MEM', disk: 'Disco' };
+
+function getMetricLabels(checkType: string | undefined) {
+  return metricLabels[checkType || ''] || defaultLabels;
+}
+
 function getCollectedMetrics(service: ServiceLike) {
   const map = collectsMetric[service.check_type || ''] || { cpu: false, memory: false, disk: false };
   return {
@@ -136,11 +152,12 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
           {hasResources ? (
             (() => {
               const m = getCollectedMetrics(service);
+              const labels = getMetricLabels(service.check_type);
               return (
                 <>
-                  {m.cpu && <MetricBar value={Number(service.cpu)} label="CPU" color={getBarColor(Number(service.cpu))} />}
-                  {m.memory && <MetricBar value={Number(service.memory)} label="MEM" color={getBarColor(Number(service.memory))} />}
-                  {m.disk && <MetricBar value={Number(service.disk)} label="DISK" color={getBarColor(Number(service.disk))} />}
+                  {m.cpu && <MetricBar value={Number(service.cpu)} label={labels.cpu} color={getBarColor(Number(service.cpu))} />}
+                  {m.memory && <MetricBar value={Number(service.memory)} label={labels.memory} color={getBarColor(Number(service.memory))} />}
+                  {m.disk && <MetricBar value={Number(service.disk)} label={labels.disk} color={getBarColor(Number(service.disk))} />}
                 </>
               );
             })()
