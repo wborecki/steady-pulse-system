@@ -71,8 +71,36 @@ function getTimeSinceCheck(lastCheck: string | null): { text: string; color: str
   return { text: `${Math.round(diffMin / 60)}h`, color: 'text-destructive' };
 }
 
+// Map of which resource metrics each check_type actually collects
+const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: boolean }> = {
+  http: { cpu: false, memory: false, disk: false },
+  tcp: { cpu: false, memory: false, disk: false },
+  process: { cpu: false, memory: false, disk: false },
+  s3: { cpu: false, memory: false, disk: false },
+  sql_query: { cpu: true, memory: true, disk: true },
+  postgresql: { cpu: true, memory: true, disk: false },
+  mongodb: { cpu: true, memory: true, disk: true },
+  cloudwatch: { cpu: true, memory: true, disk: true },
+  airflow: { cpu: true, memory: true, disk: false },
+  lambda: { cpu: true, memory: true, disk: true },
+  ecs: { cpu: true, memory: true, disk: false },
+  cloudwatch_alarms: { cpu: true, memory: true, disk: true },
+  systemctl: { cpu: true, memory: true, disk: true },
+  container: { cpu: true, memory: true, disk: true },
+};
+
+function getCollectedMetrics(service: ServiceLike) {
+  const map = collectsMetric[service.check_type || ''] || { cpu: false, memory: false, disk: false };
+  return {
+    cpu: map.cpu && Number(service.cpu) > 0,
+    memory: map.memory && Number(service.memory) > 0,
+    disk: map.disk && Number(service.disk) > 0,
+  };
+}
+
 function showsResourceMetrics(service: ServiceLike): boolean {
-  return Number(service.cpu) > 0 || Number(service.memory) > 0 || Number(service.disk) > 0;
+  const m = getCollectedMetrics(service);
+  return m.cpu || m.memory || m.disk;
 }
 
 export function ServiceRow({ service, onClick }: ServiceRowProps) {
@@ -106,11 +134,16 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
         {/* Contextual metrics */}
         <div className="hidden md:flex items-center gap-4 w-80">
           {hasResources ? (
-            <>
-              <MetricBar value={Number(service.cpu)} label="CPU" color={getBarColor(Number(service.cpu))} />
-              <MetricBar value={Number(service.memory)} label="MEM" color={getBarColor(Number(service.memory))} />
-              <MetricBar value={Number(service.disk)} label="DISK" color={getBarColor(Number(service.disk))} />
-            </>
+            (() => {
+              const m = getCollectedMetrics(service);
+              return (
+                <>
+                  {m.cpu && <MetricBar value={Number(service.cpu)} label="CPU" color={getBarColor(Number(service.cpu))} />}
+                  {m.memory && <MetricBar value={Number(service.memory)} label="MEM" color={getBarColor(Number(service.memory))} />}
+                  {m.disk && <MetricBar value={Number(service.disk)} label="DISK" color={getBarColor(Number(service.disk))} />}
+                </>
+              );
+            })()
           ) : (
             <div className="flex-1 flex items-center gap-4">
               <div className="flex-1 text-center">
