@@ -426,6 +426,60 @@ Deno.serve(async (req) => {
         }
       }
 
+      // --- Threshold-based alerts ---
+      try {
+        const { data: thresholds } = await supabase
+          .from("alert_thresholds")
+          .select("*")
+          .eq("service_id", service.id)
+          .eq("enabled", true);
+
+        if (thresholds && thresholds.length > 0) {
+          // Get current service metrics for comparison
+          const { data: svcNow } = await supabase.from("services").select("cpu, memory, disk, response_time").eq("id", service.id).single();
+          const metricsMap: Record<string, number> = {
+            cpu: Number(svcNow?.cpu ?? 0),
+            memory: Number(svcNow?.memory ?? 0),
+            disk: Number(svcNow?.disk ?? 0),
+            response_time: checkResult.response_time ?? 0,
+            error_rate: 0, // would come from specific check types
+          };
+
+          const now = Date.now();
+          for (const t of thresholds) {
+            const val = metricsMap[t.metric] ?? 0;
+            let triggered = false;
+            switch (t.operator) {
+              case "gt": triggered = val > t.threshold; break;
+              case "gte": triggered = val >= t.threshold; break;
+              case "lt": triggered = val < t.threshold; break;
+              case "lte": triggered = val <= t.threshold; break;
+            }
+
+            if (!triggered) continue;
+
+            // Cooldown check
+            if (t.last_triggered_at) {
+              const lastMs = new Date(t.last_triggered_at).getTime();
+              if (now - lastMs < t.cooldown_minutes * 60000) continue;
+            }
+
+            const opSymbol = { gt: ">", gte: "≥", lt: "<", lte: "≤" }[t.operator] || t.operator;
+            const unit = t.metric === "response_time" ? "ms" : "%";
+            await supabase.from("alerts").insert({
+              service_id: service.id,
+              type: t.severity === "critical" ? "critical" : "warning",
+              message: `${service.name}: ${t.metric.toUpperCase()} ${opSymbol} ${t.threshold}${unit} (atual: ${val.toFixed(1)}${unit})`,
+            });
+
+            // Update last_triggered_at
+            await supabase.from("alert_thresholds").update({ last_triggered_at: new Date().toISOString() }).eq("id", t.id);
+          }
+        }
+      } catch (thErr) {
+        console.error("Threshold check error:", thErr);
+      }
+
       results.push({
         service_id: service.id,
         name: service.name,

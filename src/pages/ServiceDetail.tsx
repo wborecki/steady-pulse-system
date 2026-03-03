@@ -5,6 +5,7 @@ import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck }
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
+import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
 import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1330,6 +1331,9 @@ const ServiceDetail = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Threshold Config Panel */}
+      <ThresholdConfigPanel serviceId={service.id} checkType={checkType} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
