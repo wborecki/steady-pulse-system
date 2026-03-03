@@ -1,46 +1,79 @@
 
 
-## Auditoria Final — Pronto para Produção
+## Tela de Configuração de Thresholds de Status por Tipo de Serviço
 
-Após revisar todo o código, banco de dados e linter, identifiquei os pontos pendentes. Separei em **deve corrigir** e **melhorias opcionais**.
+### Problema
 
----
+Os limites que determinam quando um serviço fica "online", "warning" ou "offline" estão hardcoded em 10 edge functions diferentes. Exemplo do Airflow: `successRate < 50` → warning. Do servidor: `cpu > 95` → offline. Esses valores precisam ser configuráveis pela UI.
 
-### Deve Corrigir (Segurança)
+### Solução
 
-**1. RLS Policies ainda permissivas (8 warnings no linter)**
-
-As policies de `services` e `alert_thresholds` ainda usam `USING (true)` / `WITH CHECK (true)` para INSERT, UPDATE e DELETE. Qualquer usuário autenticado pode modificar dados de qualquer outro. Como este é um sistema de monitoramento onde tipicamente todos os usuários autenticados compartilham os mesmos serviços, uma abordagem pragmática seria manter o `true` mas apenas para `authenticated` (que já está). Se preferir isolamento por usuário no futuro, precisaria de um `user_id` nas tabelas — mas para o caso atual (equipe compartilhada), o modelo atual é aceitável.
-
-**Recomendação**: Aceitar como está se o sistema é usado por uma equipe confiável. Caso contrário, adicionar `user_id` + owner check.
-
-**2. Bug no cálculo de uptime da página Reports**
-
-No `Reports.tsx` (linha 24), o heatmap e ranking de uptime contam apenas `status === 'online'` como disponível, ignorando `warning`. Isso cria inconsistência com o dashboard (que já foi corrigido). Precisa incluir `warning` como disponível nos 3 cálculos: `uptimeRanking`, `heatmapData` e `reliabilityMetrics`.
+Criar uma tabela de regras de status por `check_type` e uma tela de configuração na página de Settings.
 
 ---
 
-### Melhorias Opcionais (Nice-to-have)
+### 1. Nova tabela `check_type_status_rules`
 
-**3. Limite de 1000 registros nos health checks**
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid | PK |
+| check_type | text (unique) | Ex: airflow, server, postgresql |
+| warning_rules | jsonb | Condições para status "warning" |
+| offline_rules | jsonb | Condições para status "offline" |
+| created_at | timestamp | |
+| updated_at | timestamp | |
 
-As queries `useAllRecentHealthChecks` e `useHealthChecksForPeriod` usam `.limit(1000)`. Com muitos serviços e checks frequentes (ex: 10 serviços x 1 check/min = 14.400/dia), os dados serão truncados silenciosamente. Para produção, considerar paginação ou agregação server-side.
+Exemplo de `warning_rules` para Airflow:
+```json
+{
+  "import_errors_gt": 0,
+  "success_rate_lt": 50,
+  "failed_runs_gt": 10,
+  "failed_runs_success_rate_lt": 70
+}
+```
 
-**4. Responsividade da página Services e Reports**
+Exemplo para Server:
+```json
+{
+  "cpu_gt": 80,
+  "memory_gt": 80,
+  "disk_gt": 80
+}
+```
 
-A página `Services.tsx` (linha 42) e `Reports.tsx` usam `p-6` fixo sem adaptação mobile. Aplicar o mesmo padrão responsivo do dashboard (`p-3 sm:p-4 lg:p-6`).
+Seed com os valores atuais hardcoded para todos os 10 tipos.
+
+### 2. UI — Nova aba em Settings
+
+Adicionar uma aba/card "Regras de Status" na página de configurações com:
+- Lista de todos os `check_type` existentes
+- Para cada tipo, campos editáveis para os limites de warning e offline
+- Campos dinâmicos conforme o tipo (Airflow mostra success_rate, failed_runs; Server mostra cpu, memory, disk)
+- Botão salvar por tipo
+
+### 3. Atualizar Edge Functions
+
+Cada edge function (airflow-metrics, server-metrics, etc.) passa a ler a tabela `check_type_status_rules` antes de determinar o status, usando os valores do banco ao invés dos hardcoded. Se não houver regra configurada, usa os defaults atuais como fallback.
 
 ---
 
-### Resumo de Alterações
+### Arquivos afetados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/pages/Reports.tsx` | Corrigir contagem de `warning` como disponível em 3 locais |
-| `src/pages/Services.tsx` | Padding responsivo |
-| `src/pages/Reports.tsx` | Padding responsivo |
-
-### Veredicto
-
-O sistema está **funcional e pronto para produção** com apenas a correção do bug de uptime no Reports (item 2). Os warnings de RLS são aceitáveis para um sistema de equipe compartilhada. As demais melhorias são cosméticas.
+| Migration SQL | Criar tabela + seed com defaults atuais |
+| `src/pages/SettingsPage.tsx` | Adicionar seção "Regras de Status" |
+| `src/hooks/useCheckTypeRules.ts` | Novo hook CRUD |
+| `supabase/functions/airflow-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/server-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/azure-sql-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/container-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/lambda-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/ecs-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/cloudwatch-alarms/index.ts` | Ler regras do banco |
+| `supabase/functions/mongodb-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/postgresql-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/systemctl-metrics/index.ts` | Ler regras do banco |
+| `supabase/functions/health-check/index.ts` | Ler regras do banco (HTTP) |
 
