@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppSidebar } from "@/components/monitoring/AppSidebar";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useRealtimeSubscriptions } from "@/hooks/useRealtimeSubscriptions";
 import Index from "./pages/Index";
 import Services from "./pages/Services";
 import ServiceDetail from "./pages/ServiceDetail";
@@ -15,6 +16,11 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function RealtimeProvider({ children }: { children: React.ReactNode }) {
+  useRealtimeSubscriptions();
+  return <>{children}</>;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -28,17 +34,19 @@ const App = () => (
             path="*"
             element={
               <ProtectedRoute>
-                <AppSidebar>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/services" element={<Services />} />
-                    <Route path="/service/:id" element={<ServiceDetail />} />
-                    <Route path="/alerts" element={<Alerts />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </AppSidebar>
+                <RealtimeProvider>
+                  <AppSidebar>
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/services" element={<Services />} />
+                      <Route path="/service/:id" element={<ServiceDetail />} />
+                      <Route path="/alerts" element={<Alerts />} />
+                      <Route path="/reports" element={<Reports />} />
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </AppSidebar>
+                </RealtimeProvider>
               </ProtectedRoute>
             }
           />

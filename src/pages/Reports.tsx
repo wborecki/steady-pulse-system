@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useServices } from '@/hooks/useServices';
 import { useHealthChecksForPeriod } from '@/hooks/useHealthChecks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
+import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, TrendingUp, Timer, ShieldCheck } from 'lucide-react';
+import { BarChart3, TrendingUp, Timer, ShieldCheck, Download } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Reports = () => {
   const navigate = useNavigate();
@@ -135,6 +137,29 @@ const Reports = () => {
     return 'bg-destructive';
   }
 
+  const exportCsv = useCallback(() => {
+    const rows = [['Serviço', 'Status', 'Uptime %', 'Incidentes', 'MTTR (min)', 'MTBF (h)', 'Latência Média (ms)', 'Tendência %']];
+    services.forEach(s => {
+      const m = reliabilityMetrics[s.id] || { mttr: 0, mtbf: 0, incidents: 0 };
+      const lt = latencyTrends.find(l => l.id === s.id);
+      const ur = uptimeRanking.find(u => u.id === s.id);
+      rows.push([
+        s.name, s.status, (ur?.calculatedUptime ?? 0).toFixed(2),
+        String(m.incidents), String(m.mttr), String(m.mtbf),
+        String(lt?.avgLatency ?? s.response_time), String(lt?.trend ?? 0),
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-monitorhub-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Relatório exportado!');
+  }, [services, reliabilityMetrics, latencyTrends, uptimeRanking]);
+
   if (isLoading) {
     return (
       <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
@@ -146,21 +171,26 @@ const Reports = () => {
   return (
     <div className="p-6 space-y-6 grid-bg min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-heading font-bold">Relatórios</h1>
           <p className="text-sm text-muted-foreground font-mono">Análise de confiabilidade e tendências</p>
         </div>
-        <Select value={String(period)} onValueChange={v => setPeriod(Number(v))}>
-          <SelectTrigger className="w-40 bg-secondary border-border">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Últimos 7 dias</SelectItem>
-            <SelectItem value="14">Últimos 14 dias</SelectItem>
-            <SelectItem value="30">Últimos 30 dias</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportCsv} className="gap-2">
+            <Download className="h-4 w-4" /> Exportar CSV
+          </Button>
+          <Select value={String(period)} onValueChange={v => setPeriod(Number(v))}>
+            <SelectTrigger className="w-40 bg-secondary border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Últimos 7 dias</SelectItem>
+              <SelectItem value="14">Últimos 14 dias</SelectItem>
+              <SelectItem value="30">Últimos 30 dias</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Uptime Heatmap */}
