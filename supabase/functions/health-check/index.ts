@@ -21,30 +21,16 @@ async function checkSslExpiry(url: string): Promise<{ days_until_expiry: number 
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: "Not HTTPS" };
-    
-    const conn = await Deno.connectTls({ hostname: parsed.hostname, port: parseInt(parsed.port) || 443 });
-    const cert = conn.peerCertificates?.[0];
-    conn.close();
-    
-    if (!cert) return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: "No certificate" };
-    
-    // Parse certificate dates - Deno TLS certs have notBefore/notAfter as Date-like
-    const notAfter = cert.notAfter ? new Date(cert.notAfter) : null;
-    const notBefore = cert.notBefore ? new Date(cert.notBefore) : null;
-    const daysUntilExpiry = notAfter ? Math.floor((notAfter.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-    
-    // Extract issuer CN
-    const issuerStr = cert.issuer || "";
-    const cnMatch = typeof issuerStr === "string" ? issuerStr.match(/CN=([^,]+)/) : null;
-    const issuer = cnMatch ? cnMatch[1] : (typeof issuerStr === "string" ? issuerStr : null);
-    
-    return {
-      days_until_expiry: daysUntilExpiry,
-      issuer,
-      valid_from: notBefore?.toISOString() || null,
-      valid_to: notAfter?.toISOString() || null,
-      error: null,
-    };
+    // Deno.connectTls + peerCertificates not available in Supabase Edge Runtime.
+    // Use fetch HEAD to verify TLS connectivity.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      await fetch(url, { method: "HEAD", signal: controller.signal, redirect: "follow" });
+    } finally {
+      clearTimeout(timer);
+    }
+    return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: null };
   } catch (err) {
     return { days_until_expiry: null, issuer: null, valid_from: null, valid_to: null, error: err.message };
   }
@@ -145,8 +131,16 @@ async function checkTcp(
 }> {
   const start = Date.now();
   try {
-    const conn = await Deno.connect({ hostname: host, port });
-    conn.close();
+    // Deno.connect may not be available in Supabase Edge Runtime;
+    // use HTTP/HTTPS fetch as connectivity probe instead.
+    const scheme = [443, 8443].includes(port) ? "https" : "http";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      await fetch(`${scheme}://${host}:${port}/`, { signal: controller.signal, method: "HEAD" });
+    } finally {
+      clearTimeout(timer);
+    }
     return {
       status: "online",
       response_time: Date.now() - start,
@@ -234,6 +228,14 @@ Deno.serve(async (req) => {
               "Content-Type": "application/json",
             },
           });
+          if (!fnRes.ok) {
+            const errText = await fnRes.text();
+            return {
+              status: "offline",
+              response_time: 0,
+              error_message: `${fnName} HTTP ${fnRes.status}: ${errText.slice(0, 200)}`,
+            };
+          }
           const fnData = await fnRes.json();
           if (fnData.success) {
             results.push({
@@ -360,7 +362,7 @@ Deno.serve(async (req) => {
                   response_time: sqlTime,
                   error_message: m.error_message ?? null,
                 });
-                continue; // skip generic result handling below
+                return; // skip generic result handling below
               } else {
                 checkResult = {
                   status: "offline",
@@ -378,7 +380,7 @@ Deno.serve(async (req) => {
           } else {
             // Fallback to edge function delegation (direct mssql)
             const result = await delegateToFunction("azure-sql-metrics");
-            if (result === null) continue;
+            if (result === null) return;
             checkResult = result;
           }
           break;
@@ -471,7 +473,7 @@ Deno.serve(async (req) => {
                   response_time: m.response_time ?? pgTime,
                   error_message: m.error_message ?? null,
                 });
-                continue;
+                return;
               } else {
                 checkResult = {
                   status: "offline",
@@ -489,26 +491,26 @@ Deno.serve(async (req) => {
           } else {
             // Fallback to edge function delegation (direct pg connection)
             const result = await delegateToFunction("postgresql-metrics");
-            if (result === null) continue;
+            if (result === null) return;
             checkResult = result;
           }
           break;
         }
         case "mongodb": {
           const result = await delegateToFunction("mongodb-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "airflow": {
           const result = await delegateToFunction("airflow-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "cloudwatch": {
           const result = await delegateToFunction("aws-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
@@ -532,7 +534,7 @@ Deno.serve(async (req) => {
                 response_time: fnData.metrics.response_time,
                 error_message: fnData.metrics.error_message,
               });
-              continue;
+              return;
             }
             checkResult = { status: "offline", response_time: 0, error_message: fnData.error || "S3 check failed" };
           } catch (err) {
@@ -542,43 +544,43 @@ Deno.serve(async (req) => {
         }
         case "lambda": {
           const result = await delegateToFunction("lambda-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "ecs": {
           const result = await delegateToFunction("ecs-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "cloudwatch_alarms": {
           const result = await delegateToFunction("cloudwatch-alarms");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "systemctl": {
           const result = await delegateToFunction("systemctl-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "container": {
           const result = await delegateToFunction("container-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "server": {
           const result = await delegateToFunction("server-metrics");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }
         case "supabase_project": {
           const result = await delegateToFunction("supabase-monitor");
-          if (result === null) continue;
+          if (result === null) return;
           checkResult = result;
           break;
         }

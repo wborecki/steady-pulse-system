@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazy, Suspense } from "react";
 import { toast } from "sonner";
 import { useSoundAlerts } from "@/hooks/useSoundAlerts";
+import { PageLoader } from "@/components/PageLoader";
 import Login from "./pages/Login";
 
 // Lazy-loaded pages — each chunk is loaded on demand (P5: code splitting)
@@ -45,21 +46,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function PageFallback() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-pulse space-y-4 w-full max-w-lg px-4">
-        <div className="h-8 bg-muted rounded w-1/3" />
-        <div className="h-4 bg-muted rounded w-2/3" />
-        <div className="grid grid-cols-4 gap-4 mt-6">
-          {[1,2,3,4].map(i => <div key={i} className="h-24 bg-muted rounded-lg" />)}
-        </div>
-        <div className="h-64 bg-muted rounded-lg mt-4" />
-      </div>
-    </div>
-  );
-}
-
 function SoundAlertsProvider({ children }: { children: React.ReactNode }) {
   useSoundAlerts();
   return <>{children}</>;
@@ -82,7 +68,7 @@ const App = () => (
                     <SoundAlertsProvider>
                     <AppSidebar>
                       <ErrorBoundary>
-                        <Suspense fallback={<PageFallback />}>
+                        <Suspense fallback={<PageLoader />}>
                           <Routes>
                             <Route path="/" element={<Index />} />
                             <Route path="/services" element={<Services />} />
