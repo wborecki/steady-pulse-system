@@ -25,18 +25,28 @@ Deno.serve(async (req) => {
 
     const token = config.token as string || "";
 
-    const start = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const fetchWithRetry = async (url: string, opts: RequestInit, retries = 1): Promise<Response> => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(url, { ...opts, signal: controller.signal });
+          clearTimeout(timeout);
+          return res;
+        } catch (err) {
+          if (attempt === retries) throw err;
+          console.warn(`[server-metrics] Attempt ${attempt + 1} failed, retrying...`);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      throw new Error("Unreachable");
+    };
 
+    const start = Date.now();
     const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (token) fetchHeaders["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`${agentUrl}/metrics`, {
-      signal: controller.signal,
-      headers: fetchHeaders,
-    });
-    clearTimeout(timeout);
+    const res = await fetchWithRetry(`${agentUrl}/metrics`, { headers: fetchHeaders });
 
     if (!res.ok) throw new Error(`Agent returned ${res.status}`);
     const agentData = await res.json();

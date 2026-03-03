@@ -6,16 +6,24 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string, retries = 1): Promise<any> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${agentUrl}${endpoint}`, { signal: controller.signal, headers });
-  clearTimeout(timeout);
-  if (!res.ok) throw new Error(`Agent returned ${res.status} for ${endpoint}`);
-  return res.json();
+      const res = await fetch(`${agentUrl}${endpoint}`, { signal: controller.signal, headers });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`Agent returned ${res.status} for ${endpoint}`);
+      return res.json();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.warn(`[container-metrics] Attempt ${attempt + 1} failed for ${endpoint}, retrying...`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
 }
 
 Deno.serve(async (req) => {
