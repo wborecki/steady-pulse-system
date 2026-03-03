@@ -8,13 +8,12 @@ import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { MetricsBarChart, DagDurationChart } from '@/components/monitoring/AirflowCharts';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench, Download, ArrowUpCircle } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench, Download, ArrowUpCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
 
 function MetricCard({ label, value, unit, color, invertBar }: { label: string; value: number | string; unit: string; color: string; invertBar?: boolean }) {
@@ -371,7 +370,7 @@ const ServiceDetail = () => {
   const deleteService = useDeleteService();
   const updateService = useUpdateService();
   const [editOpen, setEditOpen] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyStatus, setHistoryStatus] = useState('all');
   const [historyPeriod, setHistoryPeriod] = useState('24');
   const [historyPage, setHistoryPage] = useState(0);
@@ -539,6 +538,9 @@ const ServiceDetail = () => {
             <Wrench className="h-4 w-4" />
             <span className="hidden sm:inline">{service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}</span>
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="gap-2">
+            <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Configurações</span>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
             <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Editar</span>
           </Button>
@@ -577,30 +579,7 @@ const ServiceDetail = () => {
         <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />No estado atual: {stateDuration}</span>
       </div>
 
-      {/* Collapsible Config */}
-      <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2 text-xs font-mono text-muted-foreground">
-            <Settings2 className="h-3.5 w-3.5" />
-            Configuração do Serviço
-            {configOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <Card className="glass-card mt-2">
-            <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
-              <div><span className="text-muted-foreground">Categoria:</span> <span className="text-foreground">{categoryLabels[service.category] || service.category}</span></div>
-              <div><span className="text-muted-foreground">Tipo de Check:</span> <span className="text-foreground">{checkTypeLabels[checkType] || checkType}</span></div>
-              <div><span className="text-muted-foreground">Intervalo:</span> <span className="text-foreground">{service.check_interval_seconds}s</span></div>
-              <div><span className="text-muted-foreground">Habilitado:</span> <span className="text-foreground">{service.enabled ? 'Sim' : 'Não'}</span></div>
-              {service.url && <div className="col-span-2"><span className="text-muted-foreground">URL:</span> <span className="text-foreground break-all">{service.url}</span></div>}
-              {Object.entries(config).filter(([k]) => !['password', 'private_key', 'token'].includes(k)).map(([key, val]) => (
-                <div key={key}><span className="text-muted-foreground">{key}:</span> <span className="text-foreground">{String(val)}</span></div>
-              ))}
-            </CardContent>
-          </Card>
-        </CollapsibleContent>
-      </Collapsible>
+
 
       {/* Contextual Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1889,8 +1868,7 @@ const ServiceDetail = () => {
         </Card>
       )}
 
-      {/* Threshold Config Panel */}
-      <ThresholdConfigPanel serviceId={service.id} checkType={checkType} serviceMetrics={{ cpu: service.cpu, memory: service.memory, disk: service.disk, response_time: service.response_time }} />
+
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2117,6 +2095,67 @@ const ServiceDetail = () => {
           </div>
         )}
       </div>
+
+      {/* Settings Sheet */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent className="bg-card border-border w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="font-heading flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-primary" />
+              Configurações do Serviço
+            </SheetTitle>
+          </SheetHeader>
+
+          {/* Service Info */}
+          <div className="mt-6 space-y-4">
+            <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Informações do Serviço</h4>
+            <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <span className="text-muted-foreground block mb-0.5">Categoria</span>
+                <span className="text-foreground font-semibold">{categoryLabels[service.category] || service.category}</span>
+              </div>
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <span className="text-muted-foreground block mb-0.5">Tipo de Check</span>
+                <span className="text-foreground font-semibold">{checkTypeLabels[checkType] || checkType}</span>
+              </div>
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <span className="text-muted-foreground block mb-0.5">Intervalo</span>
+                <span className="text-foreground font-semibold">{service.check_interval_seconds}s</span>
+              </div>
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <span className="text-muted-foreground block mb-0.5">Habilitado</span>
+                <span className={`font-semibold ${service.enabled ? 'text-success' : 'text-destructive'}`}>{service.enabled ? 'Sim' : 'Não'}</span>
+              </div>
+              {service.url && (
+                <div className="col-span-2 p-3 rounded-lg bg-secondary/50">
+                  <span className="text-muted-foreground block mb-0.5">URL</span>
+                  <span className="text-foreground break-all">{service.url}</span>
+                </div>
+              )}
+              {Object.entries(config).filter(([k]) => !['password', 'private_key', 'token'].includes(k)).map(([key, val]) => (
+                <div key={key} className="p-3 rounded-lg bg-secondary/50">
+                  <span className="text-muted-foreground block mb-0.5">{key}</span>
+                  <span className="text-foreground">{String(val)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="my-6 border-t border-border" />
+
+          {/* Thresholds */}
+          <ThresholdConfigPanel serviceId={service.id} checkType={checkType} serviceMetrics={{ cpu: service.cpu, memory: service.memory, disk: service.disk, response_time: service.response_time }} />
+
+          {/* Quick action: Edit */}
+          <div className="mt-6 pt-4 border-t border-border">
+            <Button variant="outline" className="w-full gap-2" onClick={() => { setSettingsOpen(false); setTimeout(() => setEditOpen(true), 200); }}>
+              <Pencil className="h-4 w-4" />
+              Editar Serviço
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Edit Sheet */}
       <Sheet open={editOpen} onOpenChange={setEditOpen}>
