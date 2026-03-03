@@ -25,9 +25,9 @@ const Index = () => {
   const triggerCheck = useTriggerHealthCheck();
 
   const stats = useMemo(() => {
-    const online = services.filter(s => s.status === 'online').length;
-    const offline = services.filter(s => s.status === 'offline').length;
     const warning = services.filter(s => s.status === 'warning').length;
+    const offline = services.filter(s => s.status === 'offline').length;
+    const online = services.filter(s => s.status === 'online' || s.status === 'warning').length;
     const avgUptime = services.length > 0
       ? (services.reduce((a, s) => a + Number(s.uptime), 0) / services.length).toFixed(2)
       : '0';
@@ -145,16 +145,16 @@ const Index = () => {
             <RefreshCw className={`h-3.5 w-3.5 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
             Verificar Agora
           </Button>
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono ${stats.offline > 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono ${stats.offline > 0 ? 'bg-destructive/10 text-destructive' : stats.warning > 0 ? 'bg-yellow-500/10 text-yellow-600' : 'bg-success/10 text-success'}`}>
             <Activity className="h-3.5 w-3.5" />
-            {stats.offline > 0 ? `${stats.offline} serviço(s) offline` : 'Todos os serviços online'}
+            {stats.offline > 0 ? `${stats.offline} serviço(s) offline` : stats.warning > 0 ? `${stats.warning} em atenção` : 'Todos os serviços online'}
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatsCard title="Serviços Online" value={stats.online} subtitle={`de ${stats.total} serviços`} icon={CheckCircle} variant="success" />
+        <StatsCard title="Serviços Ativos" value={stats.online} subtitle={`de ${stats.total} serviços${stats.warning > 0 ? ` (${stats.warning} em atenção)` : ''}`} icon={CheckCircle} variant="success" />
         <StatsCard title="Alertas Ativos" value={unacknowledgedAlerts.length} subtitle="não reconhecidos" icon={AlertTriangle} variant={unacknowledgedAlerts.length > 0 ? 'warning' : 'default'} />
         <StatsCard title="Serviços Offline" value={stats.offline} subtitle="requer atenção" icon={XCircle} variant={stats.offline > 0 ? 'destructive' : 'default'} />
         <StatsCard title="SLA 24h" value={`${slaStats.sla24h}%`} subtitle="disponibilidade" icon={TrendingUp} />
