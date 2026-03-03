@@ -152,9 +152,14 @@ Deno.serve(async (req) => {
     }
 
     const responseTime = Date.now() - start;
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "ecs").single();
+    const or = (ruleRow?.offline_rules ?? {}) as Record<string, unknown>;
+    const wr = (ruleRow?.warning_rules ?? {}) as Record<string, unknown>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (runningCount === 0 && desiredCount > 0) status = "offline";
-    else if (runningCount < desiredCount) status = "warning";
+    if ((or.running_zero ?? true) && runningCount === 0 && desiredCount > 0) status = "offline";
+    else if ((wr.running_lt_desired ?? true) && runningCount < desiredCount) status = "warning";
 
     const ecsDetails = {
       cluster,

@@ -65,9 +65,14 @@ Deno.serve(async (req) => {
     const failedCount = units.filter((u: any) => u.active_state === "failed").length;
     const inactiveCount = units.filter((u: any) => u.active_state === "inactive").length;
 
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "systemctl").single();
+    const wr = (ruleRow?.warning_rules ?? { inactive_gt: 0 }) as Record<string, number>;
+    const or = (ruleRow?.offline_rules ?? { failed_gt: 0 }) as Record<string, number>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (failedCount > 0) status = "offline";
-    else if (inactiveCount > 0) status = "warning";
+    if (failedCount > (or.failed_gt ?? 0)) status = "offline";
+    else if (inactiveCount > (wr.inactive_gt ?? 0)) status = "warning";
 
     const systemctlDetails: Record<string, unknown> = {
       units: units.map((u: any) => ({

@@ -150,13 +150,26 @@ async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) 
     }
   } catch { /* optional */ }
 
-  // Determine status
-  // Only mark offline if scheduler/metadatabase are down
-  // Warning only for import errors or very low success rate (not just a few failed runs)
+  // Determine status using configurable rules
   let status: "online" | "warning" | "offline" = "online";
-  if (!schedulerOk || !metadatabaseOk) status = "offline";
-  else if (importErrors > 0 || successRate < 50) status = "warning";
-  else if (failedRuns > 10 && successRate < 70) status = "warning";
+  
+  // Fetch rules from DB
+  const supabaseForRules = (await import("https://esm.sh/@supabase/supabase-js@2")).createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "airflow").single();
+  const wr = (ruleRow?.warning_rules ?? {}) as Record<string, number>;
+  const or = (ruleRow?.offline_rules ?? {}) as Record<string, unknown>;
+
+  // Offline rules
+  if ((or.scheduler_down && !schedulerOk) || (or.metadatabase_down && !metadatabaseOk)) status = "offline";
+  // Warning rules (defaults: import_errors_gt=0, success_rate_lt=50, failed_runs_gt=10, failed_runs_success_rate_lt=70)
+  else if (
+    (wr.import_errors_gt !== undefined && importErrors > wr.import_errors_gt) ||
+    (wr.success_rate_lt !== undefined && successRate < wr.success_rate_lt)
+  ) status = "warning";
+  else if (
+    wr.failed_runs_gt !== undefined && wr.failed_runs_success_rate_lt !== undefined &&
+    failedRuns > wr.failed_runs_gt && successRate < wr.failed_runs_success_rate_lt
+  ) status = "warning";
 
   return {
     status,

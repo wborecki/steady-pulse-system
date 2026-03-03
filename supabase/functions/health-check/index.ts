@@ -48,13 +48,15 @@ async function checkSslExpiry(url: string): Promise<{ days_until_expiry: number 
   }
 }
 
-async function checkHttp(url: string, config: Record<string, unknown> = {}): Promise<{
+async function checkHttp(url: string, config: Record<string, unknown> = {}, httpRules?: { warning_rules: Record<string, number>; offline_rules: Record<string, number> }): Promise<{
   status: "online" | "offline" | "warning";
   response_time: number;
   status_code: number | null;
   error_message: string | null;
   ssl_info?: Record<string, unknown>;
 }> {
+  const wr = httpRules?.warning_rules ?? { response_time_gt: 5000 };
+  const or = httpRules?.offline_rules ?? { status_code_gte: 500 };
   const start = Date.now();
   try {
     const controller = new AbortController();
@@ -102,18 +104,19 @@ async function checkHttp(url: string, config: Record<string, unknown> = {}): Pro
     }
 
     if (status_code >= 200 && status_code < 400) {
-      // Warn if SSL cert expires soon
       const sslWarning = ssl_info && (ssl_info.days_until_expiry as number) <= 14;
+      const slowWarning = wr.response_time_gt !== undefined && response_time > wr.response_time_gt;
       return {
-        status: response_time > 5000 ? "warning" : sslWarning ? "warning" : "online",
+        status: slowWarning ? "warning" : sslWarning ? "warning" : "online",
         response_time,
         status_code,
         error_message: sslWarning ? `SSL certificate expires in ${ssl_info!.days_until_expiry} days` : null,
         ssl_info,
       };
     } else {
+      const isOffline = or.status_code_gte !== undefined ? status_code >= or.status_code_gte : status_code >= 500;
       return {
-        status: status_code >= 500 ? "offline" : "warning",
+        status: isOffline ? "offline" : "warning",
         response_time,
         status_code,
         error_message: `HTTP ${status_code}`,
@@ -182,6 +185,10 @@ Deno.serve(async (req) => {
 
     const { data: services, error } = await query;
     if (error) throw error;
+
+    // Pre-fetch HTTP rules for the loop
+    const { data: httpRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "http").single();
+    const httpRules = httpRuleRow ? { warning_rules: httpRuleRow.warning_rules as Record<string, number>, offline_rules: httpRuleRow.offline_rules as Record<string, number> } : undefined;
 
     const results = [];
 
@@ -336,10 +343,9 @@ Deno.serve(async (req) => {
           checkResult = result;
           break;
         }
-        case "http":
         default: {
           if (service.url) {
-            checkResult = await checkHttp(service.url, service.check_config || {});
+            checkResult = await checkHttp(service.url, service.check_config || {}, httpRules);
           } else {
             checkResult = {
               status: "warning",

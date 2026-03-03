@@ -96,6 +96,33 @@ export type Database = {
           },
         ]
       }
+      check_type_status_rules: {
+        Row: {
+          check_type: string
+          created_at: string
+          id: string
+          offline_rules: Json
+          updated_at: string
+          warning_rules: Json
+        }
+        Insert: {
+          check_type: string
+          created_at?: string
+          id?: string
+          offline_rules?: Json
+          updated_at?: string
+          warning_rules?: Json
+        }
+        Update: {
+          check_type?: string
+          created_at?: string
+          id?: string
+          offline_rules?: Json
+          updated_at?: string
+          warning_rules?: Json
+        }
+        Relationships: []
+      }
       health_checks: {
         Row: {
           checked_at: string

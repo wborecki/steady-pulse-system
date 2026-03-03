@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { useNotificationSettings, useSaveNotificationSettings } from '@/hooks/useNotificationSettings';
 import { Loader2, Save } from 'lucide-react';
+import StatusRulesPanel from '@/components/monitoring/StatusRulesPanel';
 
 const SettingsPage = () => {
   const { data: settings, isLoading } = useNotificationSettings();
@@ -134,6 +135,8 @@ const SettingsPage = () => {
         {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         Salvar Configurações
       </Button>
+
+      <StatusRulesPanel />
     </div>
   );
 };

@@ -61,9 +61,14 @@ Deno.serve(async (req) => {
     const rootDisk = disks.find((d: any) => d.mount === "/") || disks[0];
     const diskPercent = rootDisk?.percent || 0;
 
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "server").single();
+    const wr = (ruleRow?.warning_rules ?? { cpu_gt: 80, memory_gt: 80, disk_gt: 80 }) as Record<string, number>;
+    const or = (ruleRow?.offline_rules ?? { cpu_gt: 95, memory_gt: 95, disk_gt: 95 }) as Record<string, number>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (cpuPercent > 95 || memPercent > 95 || diskPercent > 95) status = "offline";
-    else if (cpuPercent > 80 || memPercent > 80 || diskPercent > 80) status = "warning";
+    if (cpuPercent > (or.cpu_gt ?? 95) || memPercent > (or.memory_gt ?? 95) || diskPercent > (or.disk_gt ?? 95)) status = "offline";
+    else if (cpuPercent > (wr.cpu_gt ?? 80) || memPercent > (wr.memory_gt ?? 80) || diskPercent > (wr.disk_gt ?? 80)) status = "warning";
 
     const serverDetails = {
       hostname: agentData.hostname,
