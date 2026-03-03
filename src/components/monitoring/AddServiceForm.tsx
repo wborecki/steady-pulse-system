@@ -21,7 +21,7 @@ const categoryLabels: Record<string, string> = {
 
 const categoryCheckTypes: Record<string, string[]> = {
   aws: ['cloudwatch', 's3', 'lambda', 'ecs', 'cloudwatch_alarms'],
-  database: ['sql_query', 'postgresql', 'mongodb'],
+  database: ['sql_query', 'postgresql', 'mongodb', 'supabase'],
   airflow: ['airflow'],
   server: ['server', 'systemctl', 'tcp', 'process'],
   process: ['process'],
@@ -34,6 +34,7 @@ const checkTypeLabels: Record<string, string> = {
   tcp: 'TCP',
   sql_query: 'SQL Server (Azure)',
   postgresql: 'PostgreSQL',
+  supabase: 'Supabase (PostgreSQL)',
   mongodb: 'MongoDB',
   cloudwatch: 'AWS CloudWatch',
   s3: 'AWS S3',
@@ -69,11 +70,25 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
   const updateService = useUpdateService();
   const [category, setCategory] = useState(initialData?.category || 'server');
   const [checkType, setCheckType] = useState(initialData?.check_type || 'tcp');
-  const [httpAuthType, setHttpAuthType] = useState('none');
-  const [sshEnabled, setSshEnabled] = useState(false);
-  const [sshAuthMethod, setSshAuthMethod] = useState<'password' | 'key'>('password');
-  const [dbInputMode, setDbInputMode] = useState<'connection_string' | 'fields'>('connection_string');
-  const [headers, setHeaders] = useState<{ key: string; value: string }[]>([]);
+  const [httpAuthType, setHttpAuthType] = useState(() => {
+    const auth = initialData?.check_config?.auth as Record<string, string> | undefined;
+    return auth?.type || 'none';
+  });
+  const [sshEnabled, setSshEnabled] = useState(() => !!initialData?.check_config?.ssh);
+  const [sshAuthMethod, setSshAuthMethod] = useState<'password' | 'key'>(() => {
+    const ssh = initialData?.check_config?.ssh as Record<string, string> | undefined;
+    return ssh?.private_key ? 'key' : 'password';
+  });
+  const [dbInputMode, setDbInputMode] = useState<'connection_string' | 'fields'>(() => {
+    if (initialData?.check_config?.connection_string) return 'connection_string';
+    if (initialData?.check_config?.host) return 'fields';
+    return 'connection_string';
+  });
+  const [headers, setHeaders] = useState<{ key: string; value: string }[]>(() => {
+    const h = initialData?.check_config?.headers as Record<string, string> | undefined;
+    if (h && typeof h === 'object') return Object.entries(h).map(([key, value]) => ({ key, value }));
+    return [];
+  });
 
   const allowedChecks = categoryCheckTypes[category] || [];
 
@@ -147,9 +162,15 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
             trust_server_certificate: (form.get('db_trust_cert') as string) === 'on',
           };
         }
+        // Agent relay (optional, for firewall bypass)
+        const agentUrl = (form.get('agent_url') as string || '').trim();
+        const agentToken = (form.get('agent_token') as string || '').trim();
+        if (agentUrl) checkConfig.agent_url = agentUrl;
+        if (agentToken) checkConfig.agent_token = agentToken;
         break;
       }
-      case 'postgresql': {
+      case 'postgresql':
+      case 'supabase': {
         if (dbInputMode === 'connection_string') {
           checkConfig = { connection_string: form.get('pg_connection_string') as string };
         } else {
@@ -159,9 +180,14 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
             database: form.get('db_name') as string,
             username: form.get('db_username') as string,
             password: form.get('db_password') as string,
-            ssl_mode: (form.get('db_ssl_mode') as string) || 'prefer',
+            sslmode: (form.get('db_ssl_mode') as string) || (checkType === 'supabase' ? 'require' : 'prefer'),
           };
         }
+        // Agent relay (optional)
+        const pgAgentUrl = (form.get('agent_url') as string || '').trim();
+        const pgAgentToken = (form.get('agent_token') as string || '').trim();
+        if (pgAgentUrl) checkConfig.agent_url = pgAgentUrl;
+        if (pgAgentToken) checkConfig.agent_token = pgAgentToken;
         break;
       }
       case 'mongodb': {
@@ -187,6 +213,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           metric_type: form.get('cw_metric_type') as string || 'EC2',
           instance_id: form.get('cw_instance_id') as string,
           region: (form.get('cw_region') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 's3':
@@ -194,6 +221,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           bucket_name: form.get('s3_bucket') as string,
           region: (form.get('s3_region') as string) || undefined,
           prefix: (form.get('s3_prefix') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'airflow':
@@ -208,6 +236,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         checkConfig = {
           function_name: form.get('lambda_function_name') as string,
           region: (form.get('lambda_region') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'ecs':
@@ -215,12 +244,14 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           cluster: form.get('ecs_cluster') as string,
           service_name: form.get('ecs_service_name') as string,
           region: (form.get('ecs_region') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'cloudwatch_alarms':
         checkConfig = {
           alarm_prefix: (form.get('cw_alarm_prefix') as string) || undefined,
           region: (form.get('cw_alarm_region') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'systemctl':
@@ -319,47 +350,47 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       </div>
 
       {/* HTTP fields */}
-      {checkType === 'http' && <HttpFields httpAuthType={httpAuthType} setHttpAuthType={setHttpAuthType} headers={headers} addHeader={addHeader} removeHeader={removeHeader} updateHeader={updateHeader} />}
+      {checkType === 'http' && <HttpFields httpAuthType={httpAuthType} setHttpAuthType={setHttpAuthType} headers={headers} addHeader={addHeader} removeHeader={removeHeader} updateHeader={updateHeader} initialConfig={initialData?.check_config} initialUrl={initialData?.url} />}
 
       {/* TCP fields */}
-      {checkType === 'tcp' && <TcpFields sshEnabled={sshEnabled} setSshEnabled={setSshEnabled} sshAuthMethod={sshAuthMethod} setSshAuthMethod={setSshAuthMethod} />}
+      {checkType === 'tcp' && <TcpFields sshEnabled={sshEnabled} setSshEnabled={setSshEnabled} sshAuthMethod={sshAuthMethod} setSshAuthMethod={setSshAuthMethod} initialConfig={initialData?.check_config} />}
 
       {/* Process fields */}
-      {checkType === 'process' && <ProcessFields category={category} sshEnabled={sshEnabled} setSshEnabled={setSshEnabled} sshAuthMethod={sshAuthMethod} setSshAuthMethod={setSshAuthMethod} />}
+      {checkType === 'process' && <ProcessFields category={category} sshEnabled={sshEnabled} setSshEnabled={setSshEnabled} sshAuthMethod={sshAuthMethod} setSshAuthMethod={setSshAuthMethod} initialConfig={initialData?.check_config} />}
 
       {/* SQL Server fields */}
-      {checkType === 'sql_query' && <SqlServerFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
+      {checkType === 'sql_query' && <SqlServerFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} initialConfig={initialData?.check_config} />}
 
       {/* Airflow fields */}
       {checkType === 'airflow' && <AirflowFields initialConfig={initialData?.check_config} />}
 
-      {/* PostgreSQL fields */}
-      {checkType === 'postgresql' && <PostgresFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
+      {/* PostgreSQL / Supabase fields */}
+      {(checkType === 'postgresql' || checkType === 'supabase') && <PostgresFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} initialConfig={initialData?.check_config} />}
 
       {/* MongoDB fields */}
-      {checkType === 'mongodb' && <MongoFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />}
+      {checkType === 'mongodb' && <MongoFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} initialConfig={initialData?.check_config} />}
 
       {/* CloudWatch fields */}
-      {checkType === 'cloudwatch' && <CloudWatchFields />}
+      {checkType === 'cloudwatch' && <CloudWatchFields initialConfig={initialData?.check_config} />}
 
       {/* S3 fields */}
-      {checkType === 's3' && <S3Fields />}
+      {checkType === 's3' && <S3Fields initialConfig={initialData?.check_config} />}
 
       {/* Lambda fields */}
-      {checkType === 'lambda' && <LambdaFields />}
+      {checkType === 'lambda' && <LambdaFields initialConfig={initialData?.check_config} />}
 
       {/* ECS fields */}
-      {checkType === 'ecs' && <EcsFields />}
+      {checkType === 'ecs' && <EcsFields initialConfig={initialData?.check_config} />}
 
       {/* CloudWatch Alarms fields */}
-      {checkType === 'cloudwatch_alarms' && <CloudWatchAlarmsFields />}
+      {checkType === 'cloudwatch_alarms' && <CloudWatchAlarmsFields initialConfig={initialData?.check_config} />}
 
       {/* Systemctl fields */}
-      {checkType === 'systemctl' && <SystemctlFields />}
+      {checkType === 'systemctl' && <SystemctlFields initialConfig={initialData?.check_config} />}
 
       {/* Container fields */}
-      {checkType === 'container' && <ContainerFields />}
-      {checkType === 'server' && <ServerFields />}
+      {checkType === 'container' && <ContainerFields initialConfig={initialData?.check_config} />}
+      {checkType === 'server' && <ServerFields initialConfig={initialData?.check_config} />}
 
       {/* Interval */}
       <div className="space-y-2">
@@ -449,22 +480,25 @@ function SshFields({ sshAuthMethod, setSshAuthMethod }: { sshAuthMethod: 'passwo
   );
 }
 
-function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeHeader, updateHeader }: {
+function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeHeader, updateHeader, initialConfig, initialUrl }: {
   httpAuthType: string; setHttpAuthType: (v: string) => void;
   headers: { key: string; value: string }[];
   addHeader: () => void; removeHeader: (i: number) => void;
   updateHeader: (i: number, f: 'key' | 'value', v: string) => void;
+  initialConfig?: Record<string, unknown>;
+  initialUrl?: string | null;
 }) {
+  const auth = initialConfig?.auth as Record<string, string> | undefined;
   return (
     <div className="space-y-3">
       <div className="space-y-2">
         <Label>URL / Endpoint</Label>
-        <Input name="url" required placeholder="https://api.empresa.com" className="bg-secondary border-border" />
+        <Input name="url" required placeholder="https://api.empresa.com" className="bg-secondary border-border" defaultValue={initialUrl || ''} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Método HTTP</Label>
-          <Select name="http_method" defaultValue="GET">
+          <Select name="http_method" defaultValue={(initialConfig?.method as string) || 'GET'}>
             <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="GET">GET</SelectItem>
@@ -475,7 +509,7 @@ function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeH
         </div>
         <div className="space-y-2">
           <Label>Status Esperado</Label>
-          <Input name="expected_status" type="number" placeholder="200" className="bg-secondary border-border" />
+          <Input name="expected_status" type="number" placeholder="200" className="bg-secondary border-border" defaultValue={(initialConfig?.expected_status as string) || ''} />
         </div>
       </div>
       <div className="space-y-2">
@@ -493,18 +527,18 @@ function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeH
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label>Usuário</Label>
-            <Input name="http_username" required className="bg-secondary border-border" />
+            <Input name="http_username" required className="bg-secondary border-border" defaultValue={auth?.username || ''} />
           </div>
           <div className="space-y-2">
             <Label>Senha</Label>
-            <Input name="http_password" type="password" required className="bg-secondary border-border" />
+            <Input name="http_password" type="password" required className="bg-secondary border-border" defaultValue={auth?.password || ''} />
           </div>
         </div>
       )}
       {httpAuthType === 'bearer' && (
         <div className="space-y-2">
           <Label>Token</Label>
-          <Input name="http_token" required placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" />
+          <Input name="http_token" required placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" defaultValue={auth?.token || ''} />
         </div>
       )}
       {/* Custom Headers */}
@@ -529,20 +563,21 @@ function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeH
   );
 }
 
-function TcpFields({ sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod }: {
+function TcpFields({ sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod, initialConfig }: {
   sshEnabled: boolean; setSshEnabled: (v: boolean) => void;
   sshAuthMethod: 'password' | 'key'; setSshAuthMethod: (v: 'password' | 'key') => void;
+  initialConfig?: Record<string, unknown>;
 }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2 space-y-2">
           <Label>Host</Label>
-          <Input name="tcp_host" required placeholder="db.empresa.com" className="bg-secondary border-border" />
+          <Input name="tcp_host" required placeholder="db.empresa.com" className="bg-secondary border-border" defaultValue={(initialConfig?.host as string) || ''} />
         </div>
         <div className="space-y-2">
           <Label>Porta</Label>
-          <Input name="tcp_port" type="number" required placeholder="5432" className="bg-secondary border-border" />
+          <Input name="tcp_port" type="number" required placeholder="5432" className="bg-secondary border-border" defaultValue={String(initialConfig?.port || '')} />
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -554,16 +589,17 @@ function TcpFields({ sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod 
   );
 }
 
-function ProcessFields({ category, sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod }: {
+function ProcessFields({ category, sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod, initialConfig }: {
   category: string; sshEnabled: boolean; setSshEnabled: (v: boolean) => void;
   sshAuthMethod: 'password' | 'key'; setSshAuthMethod: (v: 'password' | 'key') => void;
+  initialConfig?: Record<string, unknown>;
 }) {
   const alwaysSsh = category === 'process';
   return (
     <div className="space-y-3">
       <div className="space-y-2">
         <Label>Nome do Processo / Comando</Label>
-        <Input name="process_name" required placeholder="nginx, java, python app.py" className="bg-secondary border-border" />
+        <Input name="process_name" required placeholder="nginx, java, python app.py" className="bg-secondary border-border" defaultValue={(initialConfig?.process_name as string) || ''} />
       </div>
       {!alwaysSsh && (
         <div className="flex items-center gap-2">
@@ -589,13 +625,13 @@ function DbInputModeToggle({ dbInputMode, setDbInputMode }: { dbInputMode: strin
   );
 }
 
-function PostgresFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
-  const [pgConnStr, setPgConnStr] = useState('');
-  const [pgHost, setPgHost] = useState('');
-  const [pgPort, setPgPort] = useState('5432');
-  const [pgDb, setPgDb] = useState('');
-  const [pgUser, setPgUser] = useState('');
-  const [pgPass, setPgPass] = useState('');
+function PostgresFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void; initialConfig?: Record<string, unknown> }) {
+  const [pgConnStr, setPgConnStr] = useState((initialConfig?.connection_string as string) || '');
+  const [pgHost, setPgHost] = useState((initialConfig?.host as string) || '');
+  const [pgPort, setPgPort] = useState(String(initialConfig?.port || '5432'));
+  const [pgDb, setPgDb] = useState((initialConfig?.database as string) || '');
+  const [pgUser, setPgUser] = useState((initialConfig?.username as string) || '');
+  const [pgPass, setPgPass] = useState((initialConfig?.password as string) || '');
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -668,13 +704,13 @@ function PostgresFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; 
   );
 }
 
-function MongoFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
-  const [mongoConnStr, setMongoConnStr] = useState('');
-  const [mongoHost, setMongoHost] = useState('');
-  const [mongoPort, setMongoPort] = useState('27017');
-  const [mongoDb, setMongoDb] = useState('');
-  const [mongoUser, setMongoUser] = useState('');
-  const [mongoPass, setMongoPass] = useState('');
+function MongoFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void; initialConfig?: Record<string, unknown> }) {
+  const [mongoConnStr, setMongoConnStr] = useState((initialConfig?.connection_string as string) || '');
+  const [mongoHost, setMongoHost] = useState((initialConfig?.host as string) || '');
+  const [mongoPort, setMongoPort] = useState(String(initialConfig?.port || '27017'));
+  const [mongoDb, setMongoDb] = useState((initialConfig?.database as string) || '');
+  const [mongoUser, setMongoUser] = useState((initialConfig?.username as string) || '');
+  const [mongoPass, setMongoPass] = useState((initialConfig?.password as string) || '');
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -745,13 +781,28 @@ function MongoFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; set
   );
 }
 
-function CloudWatchFields() {
+function CloudWatchFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [region, setRegion] = useState((initialConfig?.region as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setCredentialId(cred.id);
+      if (c.region) setRegion(c.region);
+    } else {
+      setCredentialId('');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="cloudwatch" onSelect={handleCredential} />
+      <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Tipo de Recurso</Label>
-          <Select name="cw_metric_type" defaultValue="EC2">
+          <Select name="cw_metric_type" defaultValue={(initialConfig?.metric_type as string) || 'EC2'}>
             <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="EC2">EC2</SelectItem>
@@ -761,46 +812,61 @@ function CloudWatchFields() {
         </div>
         <div className="space-y-2">
           <Label>Região AWS</Label>
-          <Input name="cw_region" placeholder="us-east-1" className="bg-secondary border-border" />
+          <Input name="cw_region" placeholder="us-east-1" className="bg-secondary border-border" value={region} onChange={e => setRegion(e.target.value)} />
         </div>
       </div>
       <div className="space-y-2">
         <Label>Instance ID / DB Identifier</Label>
-        <Input name="cw_instance_id" required placeholder="i-0abc123def" className="bg-secondary border-border font-mono text-xs" />
+        <Input name="cw_instance_id" required placeholder="i-0abc123def" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.instance_id as string) || ''} />
       </div>
-      <p className="text-xs text-muted-foreground">Usa credenciais AWS do backend. Coleta CPU, Network, StatusCheck (EC2) ou CPU, Memória, Conexões (RDS).</p>
+      <p className="text-xs text-muted-foreground">{credentialId ? '🔑 Usando credencial salva.' : 'Sem credencial — usará variáveis de ambiente do backend.'} Coleta CPU, Network, StatusCheck (EC2) ou CPU, Memória, Conexões (RDS).</p>
     </div>
   );
 }
 
-function S3Fields() {
+function S3Fields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [region, setRegion] = useState((initialConfig?.region as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setCredentialId(cred.id);
+      if (c.region) setRegion(c.region);
+    } else {
+      setCredentialId('');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="s3" onSelect={handleCredential} />
+      <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Nome do Bucket</Label>
-          <Input name="s3_bucket" required placeholder="meu-bucket-prod" className="bg-secondary border-border" />
+          <Input name="s3_bucket" required placeholder="meu-bucket-prod" className="bg-secondary border-border" defaultValue={(initialConfig?.bucket as string) || ''} />
         </div>
         <div className="space-y-2">
           <Label>Região AWS</Label>
-          <Input name="s3_region" placeholder="us-east-1" className="bg-secondary border-border" />
+          <Input name="s3_region" placeholder="us-east-1" className="bg-secondary border-border" value={region} onChange={e => setRegion(e.target.value)} />
         </div>
       </div>
       <div className="space-y-2">
         <Label>Prefixo (opcional)</Label>
-        <Input name="s3_prefix" placeholder="logs/2024/" className="bg-secondary border-border" />
+        <Input name="s3_prefix" placeholder="logs/2024/" className="bg-secondary border-border" defaultValue={(initialConfig?.prefix as string) || ''} />
       </div>
-      <p className="text-xs text-muted-foreground">Usa credenciais AWS do backend. Verifica acessibilidade do bucket.</p>
+      <p className="text-xs text-muted-foreground">{credentialId ? '🔑 Usando credencial salva.' : 'Sem credencial — usará variáveis de ambiente do backend.'} Verifica acessibilidade do bucket.</p>
     </div>
   );
 }
 
-function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
-  const [mssqlConnStr, setMssqlConnStr] = useState('');
-  const [mssqlHost, setMssqlHost] = useState('');
-  const [mssqlDb, setMssqlDb] = useState('');
-  const [mssqlUser, setMssqlUser] = useState('');
-  const [mssqlPass, setMssqlPass] = useState('');
+function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void; initialConfig?: Record<string, unknown> }) {
+  const [mssqlConnStr, setMssqlConnStr] = useState((initialConfig?.connection_string as string) || '');
+  const [mssqlHost, setMssqlHost] = useState((initialConfig?.host as string) || '');
+  const [mssqlDb, setMssqlDb] = useState((initialConfig?.database as string) || '');
+  const [mssqlUser, setMssqlUser] = useState((initialConfig?.username as string) || '');
+  const [mssqlPass, setMssqlPass] = useState((initialConfig?.password as string) || '');
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -850,8 +916,21 @@ function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string;
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <input type="checkbox" name="db_trust_cert" id="db_trust_cert" className="rounded border-border" />
+            <input type="checkbox" name="db_trust_cert" id="db_trust_cert" className="rounded border-border" defaultChecked={!!initialConfig?.trust_server_certificate} />
             <Label htmlFor="db_trust_cert" className="text-xs">Trust Server Certificate</Label>
+          </div>
+          <div className="space-y-2 pt-2 border-t border-border">
+            <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — necessário quando firewall bloqueia conexão direta)</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Agent URL</Label>
+                <Input name="agent_url" placeholder="http://212.47.72.193:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Agent Token</Label>
+                <Input name="agent_token" type="password" placeholder="Token do agente" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_token as string) || ''} />
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -923,60 +1002,105 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
   );
 }
 
-function LambdaFields() {
+function LambdaFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [region, setRegion] = useState((initialConfig?.region as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setCredentialId(cred.id);
+      if (c.region) setRegion(c.region);
+    } else {
+      setCredentialId('');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="lambda" onSelect={handleCredential} />
+      <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Nome da Função Lambda</Label>
-          <Input name="lambda_function_name" required placeholder="my-function-prod" className="bg-secondary border-border font-mono text-xs" />
+          <Input name="lambda_function_name" required placeholder="my-function-prod" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.function_name as string) || ''} />
         </div>
         <div className="space-y-2">
           <Label>Região AWS</Label>
-          <Input name="lambda_region" placeholder="us-east-1" className="bg-secondary border-border" />
+          <Input name="lambda_region" placeholder="us-east-1" className="bg-secondary border-border" value={region} onChange={e => setRegion(e.target.value)} />
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Coleta via CloudWatch: Invocations, Errors, Duration (avg/p99), Throttles, ConcurrentExecutions.</p>
+      <p className="text-xs text-muted-foreground">{credentialId ? '🔑 Usando credencial salva.' : 'Sem credencial — usará variáveis de ambiente do backend.'} Coleta via CloudWatch: Invocations, Errors, Duration (avg/p99), Throttles, ConcurrentExecutions.</p>
     </div>
   );
 }
 
-function EcsFields() {
+function EcsFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [region, setRegion] = useState((initialConfig?.region as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setCredentialId(cred.id);
+      if (c.region) setRegion(c.region);
+    } else {
+      setCredentialId('');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="ecs" onSelect={handleCredential} />
+      <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Cluster ECS</Label>
-          <Input name="ecs_cluster" required placeholder="my-cluster" className="bg-secondary border-border font-mono text-xs" />
+          <Input name="ecs_cluster" required placeholder="my-cluster" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.cluster as string) || ''} />
         </div>
         <div className="space-y-2">
           <Label>Nome do Serviço</Label>
-          <Input name="ecs_service_name" required placeholder="my-service" className="bg-secondary border-border font-mono text-xs" />
+          <Input name="ecs_service_name" required placeholder="my-service" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.service_name as string) || ''} />
         </div>
       </div>
       <div className="space-y-2">
         <Label>Região AWS</Label>
-        <Input name="ecs_region" placeholder="us-east-1" className="bg-secondary border-border" />
+        <Input name="ecs_region" placeholder="us-east-1" className="bg-secondary border-border" value={region} onChange={e => setRegion(e.target.value)} />
       </div>
-      <p className="text-xs text-muted-foreground">Coleta: Tasks (running/desired/pending), CPU/Memory via CloudWatch, deployments.</p>
+      <p className="text-xs text-muted-foreground">{credentialId ? '🔑 Usando credencial salva.' : 'Sem credencial — usará variáveis de ambiente do backend.'} Coleta: Tasks (running/desired/pending), CPU/Memory via CloudWatch, deployments.</p>
     </div>
   );
 }
 
-function CloudWatchAlarmsFields() {
+function CloudWatchAlarmsFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [region, setRegion] = useState((initialConfig?.region as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setCredentialId(cred.id);
+      if (c.region) setRegion(c.region);
+    } else {
+      setCredentialId('');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="cloudwatch_alarms" onSelect={handleCredential} />
+      <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Prefixo de Alarmes (opcional)</Label>
-          <Input name="cw_alarm_prefix" placeholder="prod-" className="bg-secondary border-border" />
+          <Input name="cw_alarm_prefix" placeholder="prod-" className="bg-secondary border-border" defaultValue={(initialConfig?.alarm_prefix as string) || ''} />
         </div>
         <div className="space-y-2">
           <Label>Região AWS</Label>
-          <Input name="cw_alarm_region" placeholder="us-east-1" className="bg-secondary border-border" />
+          <Input name="cw_alarm_region" placeholder="us-east-1" className="bg-secondary border-border" value={region} onChange={e => setRegion(e.target.value)} />
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Lista todos os alarmes CloudWatch. Filtre por prefixo para monitorar apenas alarmes específicos.</p>
+      <p className="text-xs text-muted-foreground">{credentialId ? '🔑 Usando credencial salva.' : 'Sem credencial — usará variáveis de ambiente do backend.'} Lista todos os alarmes CloudWatch. Filtre por prefixo para monitorar apenas alarmes específicos.</p>
     </div>
   );
 }
@@ -1075,11 +1199,12 @@ function DiscoveredList({ items, selected, onToggle }: {
   );
 }
 
-function SystemctlFields() {
-  const [agentUrl, setAgentUrl] = useState('');
-  const [agentToken, setAgentToken] = useState('');
+function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
+  const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const initServices = Array.isArray(initialConfig?.services) ? (initialConfig.services as string[]) : [];
+  const [selected, setSelected] = useState<Set<string>>(new Set(initServices));
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -1137,9 +1262,9 @@ function SystemctlFields() {
   );
 }
 
-function ContainerFields() {
-  const [agentUrl, setAgentUrl] = useState('');
-  const [agentToken, setAgentToken] = useState('');
+function ContainerFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
+  const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
 
   const handleCredential = (cred: Credential | null) => {
@@ -1187,9 +1312,9 @@ function ContainerFields() {
   );
 }
 
-function ServerFields() {
-  const [agentUrl, setAgentUrl] = useState('');
-  const [agentToken, setAgentToken] = useState('');
+function ServerFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
+  const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {

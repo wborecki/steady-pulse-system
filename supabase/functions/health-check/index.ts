@@ -276,15 +276,220 @@ Deno.serve(async (req) => {
           break;
         }
         case "sql_query": {
-          const result = await delegateToFunction("azure-sql-metrics");
-          if (result === null) continue;
-          checkResult = result;
+          // Handle agent relay inline to avoid cold-start issues with npm:mssql in azure-sql-metrics
+          const sqlConfig = service.check_config || {};
+
+          // Resolve credential_id if present
+          let resolvedSqlConfig = { ...sqlConfig };
+          if (sqlConfig.credential_id) {
+            const { data: cred } = await supabase.from("credentials").select("config").eq("id", sqlConfig.credential_id).single();
+            if (cred?.config) {
+              resolvedSqlConfig = { ...(cred.config as Record<string, unknown>), ...sqlConfig };
+            }
+          }
+
+          const agentUrl = ((resolvedSqlConfig.agent_url as string) || "").trim();
+          const agentToken = ((resolvedSqlConfig.agent_token as string) || "").trim();
+
+          if (agentUrl) {
+            try {
+              const sqlStart = Date.now();
+              const agentHeaders: Record<string, string> = { "Content-Type": "application/json" };
+              if (agentToken) agentHeaders["Authorization"] = `Bearer ${agentToken}`;
+
+              const agentRes = await fetch(`${agentUrl.replace(/\/$/, "")}/mssql`, {
+                method: "POST",
+                headers: agentHeaders,
+                body: JSON.stringify({
+                  host: ((resolvedSqlConfig.host as string) || "").trim(),
+                  database: ((resolvedSqlConfig.database as string) || "").trim(),
+                  username: ((resolvedSqlConfig.username as string) || "").trim(),
+                  password: ((resolvedSqlConfig.password as string) || "").trim(),
+                  port: resolvedSqlConfig.port || 1433,
+                  encrypt: resolvedSqlConfig.encrypt ?? true,
+                }),
+              });
+              const agentData = await agentRes.json();
+              const sqlTime = Date.now() - sqlStart;
+
+              if (agentData.success && agentData.metrics) {
+                const m = agentData.metrics;
+                // Fetch status rules
+                const { data: sqlRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "sql_query").single();
+                const wr = (sqlRuleRow?.warning_rules ?? { cpu_gt: 90, memory_gt: 90, storage_gt: 95 }) as Record<string, number>;
+
+                let sqlStatus: "online" | "warning" | "offline" = m.status || "online";
+                if (sqlStatus === "online" && ((m.cpu_percent ?? 0) > (wr.cpu_gt ?? 90) || (m.memory_percent ?? 0) > (wr.memory_gt ?? 90) || (m.storage_percent ?? 0) > (wr.storage_gt ?? 95))) {
+                  sqlStatus = "warning";
+                }
+
+                // Insert health check
+                await supabase.from("health_checks").insert({
+                  service_id: service.id,
+                  status: sqlStatus,
+                  response_time: sqlTime,
+                  cpu: m.cpu_percent ?? 0,
+                  memory: m.memory_percent ?? 0,
+                  disk: m.storage_percent ?? 0,
+                  error_message: m.error_message ?? null,
+                });
+
+                // Calculate uptime
+                const { data: sqlUptime } = await supabase.rpc("calculate_uptime", { p_service_id: service.id });
+
+                // Persist _sql_details
+                const updatedConfig = { ...sqlConfig, _sql_details: m.details ?? {} };
+                await supabase.from("services").update({
+                  status: sqlStatus,
+                  response_time: sqlTime,
+                  cpu: m.cpu_percent ?? 0,
+                  memory: m.memory_percent ?? 0,
+                  disk: m.storage_percent ?? 0,
+                  last_check: new Date().toISOString(),
+                  uptime: sqlUptime ?? 0,
+                  check_config: updatedConfig,
+                }).eq("id", service.id);
+
+                results.push({
+                  service_id: service.id,
+                  name: service.name,
+                  uptime: sqlUptime ?? 0,
+                  status: sqlStatus,
+                  response_time: sqlTime,
+                  error_message: m.error_message ?? null,
+                });
+                continue; // skip generic result handling below
+              } else {
+                checkResult = {
+                  status: "offline",
+                  response_time: 0,
+                  error_message: agentData.error || "Agent MSSQL check failed",
+                };
+              }
+            } catch (sqlErr) {
+              checkResult = {
+                status: "offline",
+                response_time: 0,
+                error_message: `SQL agent error: ${sqlErr.message}`,
+              };
+            }
+          } else {
+            // Fallback to edge function delegation (direct mssql)
+            const result = await delegateToFunction("azure-sql-metrics");
+            if (result === null) continue;
+            checkResult = result;
+          }
           break;
         }
-        case "postgresql": {
-          const result = await delegateToFunction("postgresql-metrics");
-          if (result === null) continue;
-          checkResult = result;
+        case "postgresql":
+        case "supabase": {
+          // Handle agent relay inline (same pattern as sql_query) to avoid cold-start issues with npm:pg
+          const pgConfig = service.check_config || {};
+
+          // Resolve credential_id if present
+          let resolvedPgConfig = { ...pgConfig };
+          if (pgConfig.credential_id) {
+            const { data: cred } = await supabase.from("credentials").select("config").eq("id", pgConfig.credential_id).single();
+            if (cred?.config) {
+              resolvedPgConfig = { ...(cred.config as Record<string, unknown>), ...pgConfig };
+            }
+          }
+
+          const pgAgentUrl = ((resolvedPgConfig.agent_url as string) || "").trim();
+          const pgAgentToken = ((resolvedPgConfig.agent_token as string) || "").trim();
+
+          if (pgAgentUrl) {
+            try {
+              const pgStart = Date.now();
+              const pgHeaders: Record<string, string> = { "Content-Type": "application/json" };
+              if (pgAgentToken) pgHeaders["Authorization"] = `Bearer ${pgAgentToken}`;
+
+              const agentPayload: Record<string, unknown> = {};
+              if (resolvedPgConfig.connection_string) agentPayload.connection_string = resolvedPgConfig.connection_string;
+              if (resolvedPgConfig.host) agentPayload.host = ((resolvedPgConfig.host as string) || "").trim();
+              if (resolvedPgConfig.database) agentPayload.database = ((resolvedPgConfig.database as string) || "").trim();
+              if (resolvedPgConfig.username) agentPayload.username = ((resolvedPgConfig.username as string) || "").trim();
+              if (resolvedPgConfig.password) agentPayload.password = ((resolvedPgConfig.password as string) || "").trim();
+              if (resolvedPgConfig.port) agentPayload.port = resolvedPgConfig.port;
+              if (resolvedPgConfig.sslmode) agentPayload.sslmode = resolvedPgConfig.sslmode;
+
+              const pgAgentRes = await fetch(`${pgAgentUrl.replace(/\/$/, "")}/postgresql`, {
+                method: "POST",
+                headers: pgHeaders,
+                body: JSON.stringify(agentPayload),
+              });
+              const pgAgentData = await pgAgentRes.json();
+              const pgTime = Date.now() - pgStart;
+
+              if (pgAgentData.success && pgAgentData.metrics) {
+                const m = pgAgentData.metrics;
+
+                // Fetch status rules
+                const { data: pgRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "postgresql").single();
+                const pgWr = (pgRuleRow?.warning_rules ?? { cache_hit_lt: 80, active_connections_gt: 50 }) as Record<string, number>;
+
+                let pgStatus: "online" | "warning" | "offline" = m.status || "online";
+                const cacheHit = m.memory ?? m.details?.cache_hit_ratio ?? 100;
+                const activeConns = m.details?.connections?.active ?? 0;
+                if (pgStatus === "online" && (cacheHit < (pgWr.cache_hit_lt ?? 80) || activeConns > (pgWr.active_connections_gt ?? 50))) {
+                  pgStatus = "warning";
+                }
+
+                // Insert health check
+                await supabase.from("health_checks").insert({
+                  service_id: service.id,
+                  status: pgStatus,
+                  response_time: m.response_time ?? pgTime,
+                  cpu: m.cpu ?? 0,
+                  memory: m.memory ?? 0,
+                  disk: m.disk ?? 0,
+                  error_message: m.error_message ?? null,
+                });
+
+                const { data: pgUptime } = await supabase.rpc("calculate_uptime", { p_service_id: service.id });
+
+                // Persist _pg_details
+                const updatedPgConfig = { ...pgConfig, _pg_details: m.details ?? {} };
+                await supabase.from("services").update({
+                  status: pgStatus,
+                  response_time: m.response_time ?? pgTime,
+                  cpu: m.cpu ?? 0,
+                  memory: m.memory ?? 0,
+                  disk: m.disk ?? 0,
+                  last_check: new Date().toISOString(),
+                  uptime: pgUptime ?? 0,
+                  check_config: updatedPgConfig,
+                }).eq("id", service.id);
+
+                results.push({
+                  service_id: service.id,
+                  name: service.name,
+                  uptime: pgUptime ?? 0,
+                  status: pgStatus,
+                  response_time: m.response_time ?? pgTime,
+                  error_message: m.error_message ?? null,
+                });
+                continue;
+              } else {
+                checkResult = {
+                  status: "offline",
+                  response_time: 0,
+                  error_message: pgAgentData.error || "Agent PostgreSQL check failed",
+                };
+              }
+            } catch (pgErr) {
+              checkResult = {
+                status: "offline",
+                response_time: 0,
+                error_message: `PostgreSQL agent error: ${pgErr.message}`,
+              };
+            }
+          } else {
+            // Fallback to edge function delegation (direct pg connection)
+            const result = await delegateToFunction("postgresql-metrics");
+            if (result === null) continue;
+            checkResult = result;
+          }
           break;
         }
         case "mongodb": {

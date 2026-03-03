@@ -79,19 +79,31 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const accessKey = Deno.env.get("AWS_ACCESS_KEY_ID")!;
-    const secretKey = Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
-    if (!accessKey || !secretKey) throw new Error("AWS credentials not configured");
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const url = new URL(req.url);
     const serviceId = url.searchParams.get("service_id");
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     let config: Record<string, unknown> = {};
     if (serviceId) {
       const { data: svc } = await supabase.from("services").select("check_config").eq("id", serviceId).single();
       config = (svc?.check_config as Record<string, unknown>) || {};
     }
+
+    // Resolve credential_id → AWS keys from credentials table
+    let accessKey = Deno.env.get("AWS_ACCESS_KEY_ID")!;
+    let secretKey = Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
+    const credentialId = config.credential_id as string;
+    if (credentialId) {
+      const { data: cred } = await supabase.from("credentials").select("config").eq("id", credentialId).single();
+      if (cred?.config) {
+        const cc = cred.config as Record<string, string>;
+        if (cc.access_key_id) accessKey = cc.access_key_id;
+        if (cc.secret_access_key) secretKey = cc.secret_access_key;
+        if (cc.region && !config.region) config.region = cc.region;
+      }
+    }
+    if (!accessKey || !secretKey) throw new Error("AWS credentials not configured. Add env vars or link a credential.");
 
     const region = (config.region as string) || Deno.env.get("AWS_REGION") || "us-east-1";
     const cluster = config.cluster as string;

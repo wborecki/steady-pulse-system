@@ -313,7 +313,7 @@ const categoryLabels: Record<string, string> = {
 
 const checkTypeLabels: Record<string, string> = {
   http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL Query',
-  postgresql: 'PostgreSQL', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3', custom: 'Custom',
+  postgresql: 'PostgreSQL', supabase: 'Supabase', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3', custom: 'Custom',
   lambda: 'Lambda', ecs: 'ECS', cloudwatch_alarms: 'CW Alarms', systemctl: 'Systemctl', container: 'Container',
   server: 'Servidor', airflow: 'Airflow',
 };
@@ -329,7 +329,7 @@ function isHttpType(checkType: string) {
   return ['http'].includes(checkType);
 }
 function isDbType(checkType: string) {
-  return ['sql_query', 'postgresql', 'mongodb'].includes(checkType);
+  return ['sql_query', 'postgresql', 'mongodb', 'supabase'].includes(checkType);
 }
 function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
@@ -349,6 +349,7 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   s3:                { cpu: false, memory: false, disk: false },
   sql_query:         { cpu: true,  memory: true,  disk: true  },
   postgresql:        { cpu: true,  memory: true,  disk: false },
+  supabase:          { cpu: true,  memory: true,  disk: false },
   mongodb:           { cpu: true,  memory: true,  disk: true  },
   cloudwatch:        { cpu: true,  memory: true,  disk: true  },
   airflow:           { cpu: true,  memory: true,  disk: false },
@@ -374,15 +375,17 @@ const ServiceDetail = () => {
   const [historyPeriod, setHistoryPeriod] = useState('24');
   const [historyPage, setHistoryPage] = useState(0);
 
+  const HISTORY_PAGE_SIZE = 20;
+
   const { data: filteredResult } = useFilteredHealthChecks(id, {
     statusFilter: historyStatus,
     periodHours: Number(historyPeriod),
     page: historyPage,
-    perPage: 50,
+    perPage: HISTORY_PAGE_SIZE,
   });
   const filteredHistory = filteredResult?.data ?? [];
   const totalChecks = filteredResult?.count ?? 0;
-  const totalPages = Math.ceil(totalChecks / 50);
+  const totalPages = Math.ceil(totalChecks / HISTORY_PAGE_SIZE);
 
   // Charts based on full history
   const responseTimeData = useMemo(() => {
@@ -609,12 +612,12 @@ const ServiceDetail = () => {
           </>
         ) : checkType === 'sql_query' ? (
           <>
-            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
-            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
-            <MetricCard label="Storage" value={Number(service.disk)} unit="%" color="text-warning" />
-            <MetricCard label="Conexões Ativas" value={(config._sql_details as Record<string, unknown>)?.active_connections as number ?? 0} unit="" color="text-foreground" />
+            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-emerald-400" />
+            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-sky-400" />
+            <MetricCard label="Storage" value={Number(service.disk)} unit="%" color={Number(service.disk) > 90 ? 'text-red-400' : Number(service.disk) > 75 ? 'text-amber-400' : 'text-emerald-400'} />
+            <MetricCard label="Conexões Ativas" value={(config._sql_details as Record<string, unknown>)?.active_connections as number ?? 0} unit="" color="text-violet-400" />
           </>
-        ) : checkType === 'postgresql' ? (
+        ) : (checkType === 'postgresql' || checkType === 'supabase') ? (
           <>
             <MetricCard label="Conexões %" value={Number(service.cpu)} unit="%" color="text-primary" />
             <MetricCard label="Cache Hit" value={Number(service.memory)} unit="%" color="text-success" invertBar />
@@ -1018,71 +1021,153 @@ const ServiceDetail = () => {
       {checkType === 'sql_query' && (() => {
         const details = (config as any)?._sql_details;
         if (!details) return null;
+        const usedGb = ((details.used_mb ?? 0) / 1024).toFixed(2);
+        const allocatedGb = ((details.allocated_mb ?? 0) / 1024).toFixed(2);
+        const storagePercent = details.allocated_mb ? Math.round((details.used_mb / details.allocated_mb) * 100) : 0;
+        const freeGb = (((details.allocated_mb ?? 0) - (details.used_mb ?? 0)) / 1024).toFixed(2);
+
+        const ioColor = (details.avg_data_io_percent ?? 0) > 80 ? 'text-red-400' : (details.avg_data_io_percent ?? 0) > 50 ? 'text-amber-400' : 'text-emerald-400';
+        const logColor = (details.avg_log_write_percent ?? 0) > 80 ? 'text-red-400' : (details.avg_log_write_percent ?? 0) > 50 ? 'text-amber-400' : 'text-sky-400';
+        const workerColor = (details.max_worker_percent ?? 0) > 80 ? 'text-red-400' : (details.max_worker_percent ?? 0) > 50 ? 'text-amber-400' : 'text-violet-400';
+        const sessionColor = (details.max_session_percent ?? 0) > 80 ? 'text-red-400' : (details.max_session_percent ?? 0) > 50 ? 'text-amber-400' : 'text-cyan-400';
+
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard label="IO Data" value={details.avg_data_io_percent ?? 0} unit="%" color="text-primary" />
-              <MetricCard label="Log Write" value={details.avg_log_write_percent ?? 0} unit="%" color="text-warning" />
-              <MetricCard label="Workers" value={details.max_worker_percent ?? 0} unit="%" color="text-success" />
-              <MetricCard label="Sessions" value={details.max_session_percent ?? 0} unit="%" color="text-foreground" />
+            {/* Resource Utilization */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Data IO', value: details.avg_data_io_percent ?? 0, color: ioColor, icon: '📊' },
+                { label: 'Log Write', value: details.avg_log_write_percent ?? 0, color: logColor, icon: '📝' },
+                { label: 'Workers', value: details.max_worker_percent ?? 0, color: workerColor, icon: '⚙️' },
+                { label: 'Sessions', value: details.max_session_percent ?? 0, color: sessionColor, icon: '🔗' },
+              ].map(m => (
+                <Card key={m.label} className="glass-card border-border/50 hover:border-border transition-colors">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                      <span className="text-sm">{m.icon}</span>
+                    </div>
+                    <p className={`text-3xl font-heading font-bold ${m.color}`}>
+                      {typeof m.value === 'number' ? m.value.toFixed(2) : m.value}<span className="text-sm ml-0.5 text-muted-foreground">%</span>
+                    </p>
+                    <div className="mt-3 h-1.5 bg-secondary/60 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          m.value > 80 ? 'bg-red-500' : m.value > 50 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${Math.min(m.value, 100)}%` }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+
+            {/* Connections & Storage */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="glass-card">
-                <CardContent className="p-4">
-                  <h3 className="font-heading font-semibold text-sm mb-3">Conexões</h3>
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <p className="text-2xl font-heading font-bold text-primary">{details.active_connections ?? 0}</p>
-                      <p className="text-xs font-mono text-muted-foreground">Ativas</p>
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Network className="h-4 w-4 text-sky-400" />
+                    <h3 className="font-heading font-semibold text-sm">Conexões & Sessões</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="text-center">
+                      <p className="text-4xl font-heading font-bold text-sky-400">{details.active_connections ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">Conexões Ativas</p>
                     </div>
-                    <div>
-                      <p className="text-2xl font-heading font-bold text-foreground">{details.total_sessions ?? 0}</p>
-                      <p className="text-xs font-mono text-muted-foreground">Total Sessões</p>
+                    <div className="text-center">
+                      <p className="text-4xl font-heading font-bold text-violet-400">{details.total_sessions ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">Total Sessões</p>
                     </div>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs font-mono text-muted-foreground">
+                    <span>Ratio</span>
+                    <span className="text-foreground">{details.total_sessions ? ((details.active_connections ?? 0) / details.total_sessions * 100).toFixed(1) : 0}% ativas</span>
                   </div>
                 </CardContent>
               </Card>
-              <Card className="glass-card">
-                <CardContent className="p-4">
-                  <h3 className="font-heading font-semibold text-sm mb-3">Storage</h3>
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <p className="text-2xl font-heading font-bold text-warning">{details.used_mb ?? 0}</p>
-                      <p className="text-xs font-mono text-muted-foreground">Usado (MB)</p>
+
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <HardDrive className="h-4 w-4 text-amber-400" />
+                    <h3 className="font-heading font-semibold text-sm">Storage</h3>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-amber-400">{usedGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Usado (GB)</p>
                     </div>
-                    <div>
-                      <p className="text-2xl font-heading font-bold text-foreground">{details.allocated_mb ?? 0}</p>
-                      <p className="text-xs font-mono text-muted-foreground">Alocado (MB)</p>
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-slate-300">{allocatedGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Alocado (GB)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-emerald-400">{freeGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Livre (GB)</p>
                     </div>
                   </div>
-                  <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-warning" style={{ width: `${details.allocated_mb ? Math.round((details.used_mb / details.allocated_mb) * 100) : 0}%` }} />
+                  <div className="mt-4 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-muted-foreground">Utilização</span>
+                      <span className={storagePercent > 90 ? 'text-red-400' : storagePercent > 75 ? 'text-amber-400' : 'text-emerald-400'}>{storagePercent}%</span>
+                    </div>
+                    <div className="h-2.5 bg-secondary/60 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          storagePercent > 90 ? 'bg-gradient-to-r from-red-600 to-red-400' :
+                          storagePercent > 75 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
+                          'bg-gradient-to-r from-emerald-600 to-emerald-400'
+                        }`}
+                        style={{ width: `${storagePercent}%` }}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Top Waits */}
             {details.top_waits?.length > 0 && (
-              <Card className="glass-card">
-                <CardContent className="p-4">
-                  <h3 className="font-heading font-semibold text-sm mb-3">Top 5 Waits</h3>
-                  <table className="w-full text-sm font-mono">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground text-xs">
-                        <th className="p-2 text-left">Wait Type</th>
-                        <th className="p-2 text-right">Count</th>
-                        <th className="p-2 text-right">Time (ms)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {details.top_waits.map((w: any, i: number) => (
-                        <tr key={i} className="border-b border-border/50">
-                          <td className="p-2 text-xs">{w.wait_type}</td>
-                          <td className="p-2 text-right">{w.waiting_tasks_count?.toLocaleString()}</td>
-                          <td className="p-2 text-right">{w.wait_time_ms?.toLocaleString()}</td>
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="h-4 w-4 text-orange-400" />
+                    <h3 className="font-heading font-semibold text-sm">Top 5 Wait Stats</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
+                          <th className="pb-2 text-left">Wait Type</th>
+                          <th className="pb-2 text-right">Tasks</th>
+                          <th className="pb-2 text-right">Tempo Total</th>
+                          <th className="pb-2 text-right">Média/Task</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {details.top_waits.map((w: any, i: number) => {
+                          const avgMs = w.waiting_tasks_count > 0 ? (w.wait_time_ms / w.waiting_tasks_count) : 0;
+                          const maxWait = Math.max(...details.top_waits.map((t: any) => t.wait_time_ms || 0));
+                          const barWidth = maxWait > 0 ? (w.wait_time_ms / maxWait) * 100 : 0;
+                          return (
+                            <tr key={i} className="border-b border-border/30 group hover:bg-secondary/20 transition-colors">
+                              <td className="py-2.5 pr-4">
+                                <div className="text-xs text-foreground">{w.wait_type}</div>
+                                <div className="mt-1 h-1 bg-secondary/40 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full bg-orange-500/60" style={{ width: `${barWidth}%` }} />
+                                </div>
+                              </td>
+                              <td className="py-2.5 text-right text-xs text-muted-foreground">{w.waiting_tasks_count?.toLocaleString('pt-BR')}</td>
+                              <td className="py-2.5 text-right text-xs text-orange-400">{(w.wait_time_ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}s</td>
+                              <td className="py-2.5 text-right text-xs text-muted-foreground">{avgMs.toFixed(1)}ms</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1091,7 +1176,7 @@ const ServiceDetail = () => {
       })()}
 
       {/* PostgreSQL Details */}
-      {checkType === 'postgresql' && (() => {
+      {(checkType === 'postgresql' || checkType === 'supabase') && (() => {
         const details = (config as any)?._pg_details;
         if (!details) return null;
         const conns = details.connections || {};
@@ -1663,7 +1748,7 @@ const ServiceDetail = () => {
               <div className="glass-card rounded-lg p-4">
                 <MetricsChart title={
                   isAirflowType(checkType) ? "Pool Utilization (%)" :
-                  checkType === 'postgresql' ? "Conexões (%)" :
+                  (checkType === 'postgresql' || checkType === 'supabase') ? "Conexões (%)" :
                   checkType === 'mongodb' ? "Conexões (%)" :
                   checkType === 'systemctl' ? "CPU Servidor (%)" :
                   checkType === 'container' ? "CPU Containers (%)" :
@@ -1679,7 +1764,7 @@ const ServiceDetail = () => {
               <div className="glass-card rounded-lg p-4">
                 <MetricsChart title={
                   isAirflowType(checkType) ? "DAG Success Rate (%)" :
-                  checkType === 'postgresql' ? "Cache Hit Ratio (%)" :
+                  (checkType === 'postgresql' || checkType === 'supabase') ? "Cache Hit Ratio (%)" :
                   checkType === 'mongodb' ? "Memória (%)" :
                   checkType === 'systemctl' ? "RAM Servidor (%)" :
                   checkType === 'container' ? "Memória Containers (%)" :
@@ -1743,8 +1828,8 @@ const ServiceDetail = () => {
                 <th className="p-3 text-left">Latência</th>
                 {isHttpType(checkType) && <th className="p-3 text-left">HTTP</th>}
                 {(isInfraType(checkType) || isDbType(checkType)) && <>
-                  <th className="p-3 text-left">{checkType === 'postgresql' ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
-                  <th className="p-3 text-left">{checkType === 'postgresql' ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
+                  <th className="p-3 text-left">{(checkType === 'postgresql' || checkType === 'supabase') ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
+                  <th className="p-3 text-left">{(checkType === 'postgresql' || checkType === 'supabase') ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
                 </>}
                 {isAirflowType(checkType) && <>
                   <th className="p-3 text-left">Pool</th>
@@ -1821,16 +1906,43 @@ const ServiceDetail = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2">
-            <Button variant="outline" size="sm" disabled={historyPage === 0} onClick={() => setHistoryPage(p => p - 1)} className="text-xs">
-              Anterior
-            </Button>
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
             <span className="text-xs font-mono text-muted-foreground">
-              Página {historyPage + 1} de {totalPages}
+              {historyPage * HISTORY_PAGE_SIZE + 1}–{Math.min((historyPage + 1) * HISTORY_PAGE_SIZE, totalChecks)} de {totalChecks}
             </span>
-            <Button variant="outline" size="sm" disabled={historyPage >= totalPages - 1} onClick={() => setHistoryPage(p => p + 1)} className="text-xs">
-              Próxima
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" disabled={historyPage === 0} onClick={() => setHistoryPage(0)} className="text-xs h-8 w-8 p-0">
+                «
+              </Button>
+              <Button variant="outline" size="sm" disabled={historyPage === 0} onClick={() => setHistoryPage(p => p - 1)} className="text-xs h-8 w-8 p-0">
+                ‹
+              </Button>
+              {(() => {
+                const pages: number[] = [];
+                const maxVisible = 5;
+                let start = Math.max(0, historyPage - Math.floor(maxVisible / 2));
+                const end = Math.min(totalPages, start + maxVisible);
+                if (end - start < maxVisible) start = Math.max(0, end - maxVisible);
+                for (let i = start; i < end; i++) pages.push(i);
+                return pages.map(p => (
+                  <Button
+                    key={p}
+                    variant={p === historyPage ? 'default' : 'outline'}
+                    size="sm"
+                    className="text-xs h-8 w-8 p-0"
+                    onClick={() => setHistoryPage(p)}
+                  >
+                    {p + 1}
+                  </Button>
+                ));
+              })()}
+              <Button variant="outline" size="sm" disabled={historyPage >= totalPages - 1} onClick={() => setHistoryPage(p => p + 1)} className="text-xs h-8 w-8 p-0">
+                ›
+              </Button>
+              <Button variant="outline" size="sm" disabled={historyPage >= totalPages - 1} onClick={() => setHistoryPage(totalPages - 1)} className="text-xs h-8 w-8 p-0">
+                »
+              </Button>
+            </div>
           </div>
         )}
       </div>

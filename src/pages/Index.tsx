@@ -4,6 +4,7 @@ import { useAlerts } from '@/hooks/useAlerts';
 import { useTriggerHealthCheck, useAllRecentHealthChecks } from '@/hooks/useHealthChecks';
 import { StatsCard } from '@/components/monitoring/StatsCard';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
+import { CategoryBarChart } from '@/components/monitoring/CategoryBarChart';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { type ServiceStatus } from '@/data/mockData';
 import { Activity, CheckCircle, AlertTriangle, XCircle, Clock, RefreshCw, TrendingUp, ShieldAlert } from 'lucide-react';
@@ -205,7 +206,7 @@ const Index = () => {
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="glass-card rounded-lg p-4">
-          <MetricsChart title="Incidentes por Categoria" data={incidentsByCategory} color="hsl(0, 72%, 55%)" unit="" />
+          <CategoryBarChart title="Incidentes por Categoria" data={incidentsByCategory} />
         </div>
         <div className="glass-card rounded-lg p-4">
           <MetricsChart title="Timeline de Incidentes (24h)" data={incidentTimeline} color="hsl(38, 92%, 55%)" unit="" />

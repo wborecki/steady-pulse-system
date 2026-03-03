@@ -54,8 +54,9 @@ async function awsRequest(service: string, region: string, action: string, param
 }
 
 async function getCloudWatchMetrics(config: Record<string, unknown>) {
-  const accessKey = Deno.env.get("AWS_ACCESS_KEY_ID")!;
-  const secretKey = Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
+  const creds = config._awsCreds as { accessKey: string; secretKey: string } | undefined;
+  const accessKey = creds?.accessKey || Deno.env.get("AWS_ACCESS_KEY_ID")!;
+  const secretKey = creds?.secretKey || Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
   const region = (config.region as string) || Deno.env.get("AWS_REGION") || "us-east-1";
 
   const instanceId = config.instance_id as string;
@@ -119,8 +120,9 @@ async function getCloudWatchMetrics(config: Record<string, unknown>) {
 }
 
 async function getS3Metrics(config: Record<string, unknown>) {
-  const accessKey = Deno.env.get("AWS_ACCESS_KEY_ID")!;
-  const secretKey = Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
+  const creds = config._awsCreds as { accessKey: string; secretKey: string } | undefined;
+  const accessKey = creds?.accessKey || Deno.env.get("AWS_ACCESS_KEY_ID")!;
+  const secretKey = creds?.secretKey || Deno.env.get("AWS_SECRET_ACCESS_KEY")!;
   const region = (config.region as string) || Deno.env.get("AWS_REGION") || "us-east-1";
   const bucketName = config.bucket_name as string;
 
@@ -153,16 +155,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    if (!Deno.env.get("AWS_ACCESS_KEY_ID") || !Deno.env.get("AWS_SECRET_ACCESS_KEY")) {
-      throw new Error("AWS credentials not configured");
-    }
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const url = new URL(req.url);
     const serviceId = url.searchParams.get("service_id");
     const checkType = url.searchParams.get("check_type") || "cloudwatch";
 
     let config: Record<string, unknown> = {};
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     if (serviceId) {
       const { data: svc } = await supabase.from("services").select("check_config, check_type").eq("id", serviceId).single();
@@ -175,6 +174,21 @@ Deno.serve(async (req) => {
         const body = await req.json();
         if (body.config) config = { ...config, ...body.config };
       } catch { /* no body */ }
+    }
+
+    // Resolve credential_id → AWS keys from credentials table
+    const credentialId = config.credential_id as string;
+    if (credentialId) {
+      const { data: cred } = await supabase.from("credentials").select("config").eq("id", credentialId).single();
+      if (cred?.config) {
+        const cc = cred.config as Record<string, string>;
+        config._awsCreds = { accessKey: cc.access_key_id, secretKey: cc.secret_access_key };
+        if (cc.region && !config.region) config.region = cc.region;
+      }
+    }
+
+    if (!config._awsCreds && (!Deno.env.get("AWS_ACCESS_KEY_ID") || !Deno.env.get("AWS_SECRET_ACCESS_KEY"))) {
+      throw new Error("AWS credentials not configured. Add env vars or link a credential.");
     }
 
     const isS3 = checkType === "s3" || config._type === "s3";

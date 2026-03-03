@@ -15,6 +15,8 @@ Endpoints:
     GET  /containers    — returns Docker container stats (auto-discovery)
     GET  /metrics       — returns server metrics (CPU, RAM, swap, disk, load, network, uptime)
     GET  /processes     — returns top processes by CPU/memory
+    POST /postgresql    — PostgreSQL metrics (connection_string or host/port/user/password/database)
+    POST /mssql         — MSSQL/Azure SQL metrics (host/port/user/password/database)
     GET  /health        — agent health check
     GET  /version       — current agent version
     POST /update        — self-update from GitHub
@@ -36,7 +38,7 @@ import urllib.request
 # Configuration
 # ---------------------------------------------------------------------------
 
-AGENT_VERSION = "2.1.0"
+AGENT_VERSION = "2.3.0"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/monitoring-agent.py"
 
 
@@ -458,6 +460,327 @@ def get_containers() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# PostgreSQL helper
+# ---------------------------------------------------------------------------
+
+
+def check_postgresql(config: dict) -> dict:
+    """Connect to PostgreSQL and collect database metrics.
+
+    Requires psycopg2: pip install psycopg2-binary
+    Accepts either 'connection_string' or individual host/port/user/password/database fields.
+    """
+    try:
+        import psycopg2  # type: ignore
+        import psycopg2.extras  # type: ignore
+    except ImportError:
+        return {"success": False, "error": "psycopg2 not installed. Run: pip install psycopg2-binary"}
+
+    # Build connection params
+    conn_str = (config.get("connection_string") or "").strip()
+    # Normalise SQLAlchemy-style URI to plain libpq format
+    if conn_str.startswith("postgresql+"):
+        conn_str = "postgresql" + conn_str[conn_str.index("://"):]
+
+    host = (config.get("host") or "").strip()
+    database = (config.get("database") or "").strip()
+    username = (config.get("username") or config.get("user") or "").strip()
+    password = (config.get("password") or "").strip()
+    port = int(config.get("port", 5432))
+    ssl_mode = (config.get("sslmode") or "").strip()
+
+    start = time.time()
+    try:
+        if conn_str:
+            conn = psycopg2.connect(conn_str, connect_timeout=15)
+        elif host and database and username:
+            kw = dict(host=host, port=port, dbname=database, user=username, password=password, connect_timeout=15)
+            if ssl_mode:
+                kw["sslmode"] = ssl_mode
+            conn = psycopg2.connect(**kw)
+        else:
+            return {"success": False, "error": "Provide connection_string or host/database/username/password"}
+
+        conn.autocommit = True
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        connect_time = round((time.time() - start) * 1000)
+
+        # 1. Database size
+        cur.execute("SELECT pg_database_size(current_database()) AS db_size, pg_size_pretty(pg_database_size(current_database())) AS db_size_pretty")
+        size_row = cur.fetchone()
+        db_size_bytes = int(size_row["db_size"]) if size_row else 0
+        db_size_pretty = size_row["db_size_pretty"] if size_row else "0"
+
+        # 2. Connections
+        cur.execute("""
+            SELECT count(*) AS total,
+                   count(*) FILTER (WHERE state = 'active') AS active,
+                   count(*) FILTER (WHERE state = 'idle') AS idle,
+                   count(*) FILTER (WHERE wait_event IS NOT NULL) AS waiting
+            FROM pg_stat_activity WHERE backend_type = 'client backend'
+        """)
+        conn_row = cur.fetchone()
+        total_conns = int(conn_row["total"]) if conn_row else 0
+        active_conns = int(conn_row["active"]) if conn_row else 0
+        idle_conns = int(conn_row["idle"]) if conn_row else 0
+        waiting_conns = int(conn_row["waiting"]) if conn_row else 0
+
+        # 3. Cache hit ratio
+        cur.execute("""
+            SELECT ROUND(100.0 * sum(blks_hit) / NULLIF(sum(blks_hit) + sum(blks_read), 0), 2) AS cache_hit_ratio
+            FROM pg_stat_database WHERE datname = current_database()
+        """)
+        cache_row = cur.fetchone()
+        cache_hit = float(cache_row["cache_hit_ratio"]) if cache_row and cache_row["cache_hit_ratio"] else 0.0
+
+        # 4. Top tables by size
+        cur.execute("""
+            SELECT schemaname, relname,
+                   pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+                   n_live_tup AS row_count,
+                   n_dead_tup AS dead_tuples,
+                   CASE WHEN n_live_tup > 0 THEN ROUND(100.0 * n_dead_tup / n_live_tup, 2) ELSE 0 END AS bloat_percent
+            FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 5
+        """)
+        top_tables = [dict(r) for r in cur.fetchall()]
+        # Convert Decimals to float for JSON serialisation
+        for t in top_tables:
+            for k, v in t.items():
+                if hasattr(v, "__float__"):
+                    t[k] = float(v)
+
+        # 5. Replication lag
+        cur.execute("""
+            SELECT CASE WHEN pg_is_in_recovery()
+                THEN EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
+                ELSE 0 END AS replication_lag_seconds
+        """)
+        rep_row = cur.fetchone()
+        replication_lag = float(rep_row["replication_lag_seconds"]) if rep_row and rep_row["replication_lag_seconds"] else 0.0
+
+        # 6. Transaction stats
+        cur.execute("""
+            SELECT xact_commit, xact_rollback, deadlocks, conflicts,
+                   tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted
+            FROM pg_stat_database WHERE datname = current_database()
+        """)
+        tx_row = cur.fetchone()
+        transactions = {}
+        if tx_row:
+            transactions = {k: int(v) if v is not None else 0 for k, v in dict(tx_row).items()}
+
+        # 7. Max connections setting
+        cur.execute("SHOW max_connections")
+        max_conns_row = cur.fetchone()
+        max_connections = int(max_conns_row["max_connections"]) if max_conns_row else 100
+
+        cur.close()
+        conn.close()
+        response_time = round((time.time() - start) * 1000)
+
+        # Connection usage percentage
+        conn_percent = round((total_conns / max_connections) * 100, 2) if max_connections > 0 else 0
+
+        # Determine status
+        status = "online"
+        if cache_hit < 80 or active_conns > 50:
+            status = "warning"
+
+        return {
+            "success": True,
+            "response_time": response_time,
+            "metrics": {
+                "cpu": min(conn_percent, 100),  # connection % as cpu proxy
+                "memory": cache_hit,  # cache hit as memory efficiency
+                "disk": 0,
+                "status": status,
+                "response_time": connect_time,
+                "error_message": None,
+                "details": {
+                    "db_size": db_size_pretty,
+                    "db_size_bytes": db_size_bytes,
+                    "connections": {
+                        "total": total_conns,
+                        "active": active_conns,
+                        "idle": idle_conns,
+                        "waiting": waiting_conns,
+                        "max": max_connections,
+                    },
+                    "cache_hit_ratio": cache_hit,
+                    "transactions": transactions,
+                    "top_tables": top_tables,
+                    "replication_lag_seconds": replication_lag,
+                },
+            },
+        }
+    except Exception as e:
+        response_time = round((time.time() - start) * 1000)
+        return {"success": False, "error": str(e), "response_time": response_time}
+
+
+# ---------------------------------------------------------------------------
+# MSSQL / Azure SQL helper
+# ---------------------------------------------------------------------------
+
+
+def check_mssql(config: dict) -> dict:
+    """Connect to MSSQL/Azure SQL and collect resource metrics.
+
+    Requires pymssql: pip install pymssql
+    """
+    try:
+        import pymssql  # type: ignore
+    except ImportError:
+        return {"success": False, "error": "pymssql not installed. Run: pip install pymssql"}
+
+    host = (config.get("host") or "").strip()
+    database = (config.get("database") or "").strip()
+    username = (config.get("username") or "").strip()
+    password = (config.get("password") or "").strip()
+    port = int(config.get("port", 1433))
+    tls = config.get("encrypt", True)
+
+    if not all([host, database, username, password]):
+        return {"success": False, "error": "Missing required fields: host, database, username, password"}
+
+    start = time.time()
+    try:
+        conn = pymssql.connect(
+            server=host,
+            user=username,
+            password=password,
+            database=database,
+            port=port,
+            login_timeout=15,
+            timeout=15,
+            tds_version="7.3",
+            conn_properties="",
+        )
+        cursor = conn.cursor(as_dict=True)
+
+        # 1. Resource stats
+        cpu_percent = 0.0
+        memory_percent = 0.0
+        data_io_percent = 0.0
+        log_write_percent = 0.0
+        max_worker_percent = 0.0
+        max_session_percent = 0.0
+        try:
+            cursor.execute("""
+                SELECT TOP 1
+                    avg_cpu_percent,
+                    avg_data_io_percent,
+                    avg_log_write_percent,
+                    avg_memory_usage_percent,
+                    max_worker_percent,
+                    max_session_percent
+                FROM sys.dm_db_resource_stats
+                ORDER BY end_time DESC
+            """)
+            row = cursor.fetchone()
+            if row:
+                cpu_percent = float(row.get("avg_cpu_percent", 0) or 0)
+                memory_percent = float(row.get("avg_memory_usage_percent", 0) or 0)
+                data_io_percent = float(row.get("avg_data_io_percent", 0) or 0)
+                log_write_percent = float(row.get("avg_log_write_percent", 0) or 0)
+                max_worker_percent = float(row.get("max_worker_percent", 0) or 0)
+                max_session_percent = float(row.get("max_session_percent", 0) or 0)
+        except Exception:
+            pass  # DMV might not be available on all editions
+
+        # 2. Storage stats
+        used_mb = 0
+        allocated_mb = 0
+        storage_percent = 0.0
+        try:
+            cursor.execute("""
+                SELECT
+                    SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8 / 1024) AS used_mb,
+                    SUM(size * 8 / 1024) AS allocated_mb
+                FROM sys.database_files
+                WHERE type_desc = 'ROWS'
+            """)
+            row = cursor.fetchone()
+            if row:
+                used_mb = int(row.get("used_mb", 0) or 0)
+                allocated_mb = int(row.get("allocated_mb", 0) or 0)
+                if allocated_mb > 0:
+                    storage_percent = round((used_mb / allocated_mb) * 100, 2)
+        except Exception:
+            pass
+
+        # 3. Connection stats
+        active_connections = 0
+        total_sessions = 0
+        try:
+            cursor.execute("SELECT COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1 AND status = 'running'")
+            row = cursor.fetchone()
+            active_connections = int(row["cnt"]) if row else 0
+
+            cursor.execute("SELECT COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1")
+            row = cursor.fetchone()
+            total_sessions = int(row["cnt"]) if row else 0
+        except Exception:
+            pass
+
+        # 4. Top waits
+        top_waits = []
+        try:
+            cursor.execute("""
+                SELECT TOP 5
+                    wait_type, waiting_tasks_count, wait_time_ms
+                FROM sys.dm_os_wait_stats
+                WHERE waiting_tasks_count > 0
+                    AND wait_type NOT LIKE '%SLEEP%'
+                    AND wait_type NOT LIKE '%IDLE%'
+                    AND wait_type NOT LIKE '%QUEUE%'
+                    AND wait_type NOT LIKE 'BROKER%'
+                    AND wait_type NOT LIKE 'XE%'
+                    AND wait_type NOT LIKE 'WAITFOR'
+                ORDER BY wait_time_ms DESC
+            """)
+            top_waits = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+        conn.close()
+        response_time = round((time.time() - start) * 1000)
+
+        # Determine status
+        status = "online"
+        if cpu_percent > 90 or memory_percent > 90 or storage_percent > 95:
+            status = "warning"
+
+        return {
+            "success": True,
+            "response_time": response_time,
+            "metrics": {
+                "cpu_percent": round(cpu_percent, 2),
+                "memory_percent": round(memory_percent, 2),
+                "storage_percent": storage_percent,
+                "active_connections": active_connections,
+                "avg_response_time": response_time,
+                "status": status,
+                "error_message": None,
+                "details": {
+                    "avg_data_io_percent": data_io_percent,
+                    "avg_log_write_percent": log_write_percent,
+                    "max_worker_percent": max_worker_percent,
+                    "max_session_percent": max_session_percent,
+                    "used_mb": used_mb,
+                    "allocated_mb": allocated_mb,
+                    "total_sessions": total_sessions,
+                    "active_connections": active_connections,
+                    "top_waits": top_waits,
+                },
+            },
+        }
+    except Exception as e:
+        response_time = round((time.time() - start) * 1000)
+        return {"success": False, "error": str(e), "response_time": response_time}
+
+
+# ---------------------------------------------------------------------------
 # Self-update helpers
 # ---------------------------------------------------------------------------
 
@@ -554,7 +877,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ok",
                 "version": AGENT_VERSION,
                 "timestamp": time.time(),
-                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics", "/processes", "/version", "/update"],
+                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics", "/processes", "/postgresql", "/mssql", "/version", "/update"],
             })
         elif self.path == "/systemctl/list":
             services = list_systemd_services()
@@ -598,6 +921,26 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 
             units = [get_systemctl_unit(svc) for svc in services]
             self.send_json({"units": units})
+        elif self.path == "/postgresql":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_json({"error": "invalid json"}, 400)
+                return
+            result = check_postgresql(data)
+            self.send_json(result, 200 if result.get("success") else 500)
+        elif self.path == "/mssql":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_json({"error": "invalid json"}, 400)
+                return
+            result = check_mssql(data)
+            self.send_json(result, 200 if result.get("success") else 500)
         elif self.path == "/update":
             result = perform_update()
             self.send_json(result, 200 if result.get("success") else 500)
@@ -615,7 +958,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 def main():
     server = http.server.HTTPServer(("0.0.0.0", CONFIG.port), AgentHandler)
     print(f"🚀 Monitoring Agent v{AGENT_VERSION} running on port {CONFIG.port}")
-    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics, /processes, /version, /update")
+    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics, /processes, /postgresql, /mssql, /version, /update")
     if CONFIG.token:
         print(f"🔒 Authentication enabled (token required)")
     else:

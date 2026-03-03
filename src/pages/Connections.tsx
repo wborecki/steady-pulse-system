@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, KeyRound, Loader2, Database, Server, Cloud, Globe, Lock } from 'lucide-react';
+import { Plus, Pencil, Trash2, KeyRound, Loader2, Database, Server, Cloud, Globe, Lock, Search, Filter, Clock } from 'lucide-react';
 import {
   useCredentials,
   useCreateCredential,
@@ -45,6 +45,25 @@ const typeColors: Record<CredentialType, string> = {
   http_auth: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
 };
 
+/** Fields that should always be masked (sensitive data) */
+const sensitiveKeys = new Set([
+  'secret_access_key', 'password', 'token', 'private_key',
+  'ssh_password', 'api_key', 'secret', 'connection_string',
+]);
+
+function maskValue(key: string, value: string): string {
+  if (sensitiveKeys.has(key)) return '••••••••';
+  if (value.length > 24) return value.slice(0, 24) + '…';
+  return value;
+}
+
+function getTimeSince(date: string): { text: string; color: string } {
+  const diffMin = Math.round((Date.now() - new Date(date).getTime()) / 60000);
+  if (diffMin < 60) return { text: `${diffMin}min`, color: 'text-success' };
+  if (diffMin < 1440) return { text: `${Math.round(diffMin / 60)}h`, color: 'text-muted-foreground' };
+  return { text: `${Math.round(diffMin / 1440)}d`, color: 'text-muted-foreground' };
+}
+
 export default function Connections() {
   const { data: credentials, isLoading } = useCredentials();
   const createMutation = useCreateCredential();
@@ -56,6 +75,7 @@ export default function Connections() {
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
+  const [search, setSearch] = useState('');
 
   const openCreate = () => {
     setEditingCredential(null);
@@ -67,7 +87,8 @@ export default function Connections() {
     setDialogOpen(true);
   };
 
-  const openDelete = (id: string) => {
+  const openDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     setDeletingId(id);
     setDeleteDialogOpen(true);
   };
@@ -85,15 +106,15 @@ export default function Connections() {
     }
   };
 
-  const filtered = credentials?.filter(c => filterType === 'all' || c.credential_type === filterType) ?? [];
-
-  // Group by type
-  const grouped = filtered.reduce<Record<string, Credential[]>>((acc, c) => {
-    const key = c.credential_type;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(c);
-    return acc;
-  }, {});
+  const filtered = (credentials ?? [])
+    .filter(c => filterType === 'all' || c.credential_type === filterType)
+    .filter(c => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return c.name.toLowerCase().includes(q)
+        || (c.description || '').toLowerCase().includes(q)
+        || credentialTypeLabels[c.credential_type as CredentialType]?.toLowerCase().includes(q);
+    });
 
   if (isLoading) {
     return (
@@ -120,12 +141,15 @@ export default function Connections() {
         </Button>
       </div>
 
-      {/* Filter */}
-      <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Filtrar:</Label>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar credenciais..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
+        </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-48 bg-secondary border-border h-8 text-xs">
-            <SelectValue />
+          <SelectTrigger className="w-48 bg-secondary border-border">
+            <Filter className="h-3.5 w-3.5 mr-2" /><SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os tipos</SelectItem>
@@ -134,50 +158,39 @@ export default function Connections() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-muted-foreground ml-2">{filtered.length} credencial(is)</span>
+        <span className="text-xs text-muted-foreground self-center">{filtered.length} credencial(is)</span>
       </div>
 
-      {/* Empty state */}
-      {filtered.length === 0 && (
-        <Card className="glass-card">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <KeyRound className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-heading font-semibold mb-1">Nenhuma credencial cadastrada</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Crie credenciais para reutilizá-las ao adicionar serviços.
-            </p>
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="h-4 w-4" /> Criar Primeira Credencial
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* List */}
+      <div className="space-y-2">
+        {filtered.length === 0 ? (
+          <Card className="glass-card">
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <KeyRound className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <h3 className="text-lg font-heading font-semibold mb-1">Nenhuma credencial encontrada</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {credentials?.length ? 'Ajuste os filtros ou busca.' : 'Crie credenciais para reutilizá-las ao adicionar serviços.'}
+              </p>
+              {!credentials?.length && (
+                <Button onClick={openCreate} className="gap-2">
+                  <Plus className="h-4 w-4" /> Criar Primeira Credencial
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          filtered.map(cred => (
+            <CredentialRow
+              key={cred.id}
+              credential={cred}
+              onEdit={() => openEdit(cred)}
+              onDelete={(e) => openDelete(cred.id, e)}
+            />
+          ))
+        )}
+      </div>
 
-      {/* Grouped list */}
-      {Object.entries(grouped).map(([type, creds]) => (
-        <div key={type} className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={`${typeColors[type as CredentialType]} border px-2 py-0.5 text-xs font-medium`}>
-              {typeIcons[type as CredentialType]}
-              <span className="ml-1">{credentialTypeLabels[type as CredentialType]}</span>
-            </Badge>
-            <span className="text-xs text-muted-foreground">{creds.length}</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {creds.map(cred => (
-              <CredentialCard
-                key={cred.id}
-                credential={cred}
-                onEdit={() => openEdit(cred)}
-                onDelete={() => openDelete(cred.id)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {/* Create / Edit Dialog */}
+      {/* Create / Edit Sheet */}
       <CredentialDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -220,65 +233,75 @@ export default function Connections() {
   );
 }
 
-/** Card for a single credential */
-function CredentialCard({ credential, onEdit, onDelete }: { credential: Credential; onEdit: () => void; onDelete: () => void }) {
+/** Row for a single credential — same pattern as ServiceRow */
+function CredentialRow({ credential, onEdit, onDelete }: { credential: Credential; onEdit: () => void; onDelete: (e: React.MouseEvent) => void }) {
   const type = credential.credential_type as CredentialType;
   const fields = credentialFields[type] || [];
-  const configKeys = Object.keys(credential.config || {});
-  const filledCount = configKeys.filter(k => {
-    const v = (credential.config as Record<string, unknown>)[k];
+  const config = credential.config as Record<string, unknown>;
+  const timeSince = getTimeSince(credential.updated_at);
+
+  // Get first non-sensitive visible field for summary
+  const summaryFields = fields.filter(f => {
+    const v = config[f.key];
     return v !== '' && v !== null && v !== undefined;
-  }).length;
+  }).slice(0, 3);
 
   return (
-    <Card className="glass-card hover:border-primary/30 transition-all group">
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded-md ${typeColors[type]} border`}>
-              {typeIcons[type]}
-            </div>
-            <div>
-              <CardTitle className="text-sm font-heading">{credential.name}</CardTitle>
-              <p className="text-[10px] text-muted-foreground font-mono">{credentialTypeLabels[type]}</p>
-            </div>
-          </div>
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={onDelete}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+    <Card
+      className="glass-card p-4 cursor-pointer hover:border-primary/40 transition-all group"
+      onClick={onEdit}
+    >
+      <div className="flex items-center gap-4">
+        {/* Icon */}
+        <div className={`p-2 rounded-lg ${typeColors[type]} border`}>
+          {typeIcons[type]}
         </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {credential.description && (
-          <p className="text-xs text-muted-foreground mb-2">{credential.description}</p>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {fields.filter(f => {
-            const v = (credential.config as Record<string, unknown>)[f.key];
-            return v !== '' && v !== null && v !== undefined;
-          }).map(f => (
-            <Badge key={f.key} variant="secondary" className="text-[10px] font-mono">
-              {f.label}: {f.type === 'password' ? '••••' : String((credential.config as Record<string, unknown>)[f.key] ?? '').slice(0, 20)}
+
+        {/* Name & info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-heading font-semibold text-sm truncate">{credential.name}</h3>
+            <Badge variant="outline" className={`${typeColors[type]} border px-1.5 py-0 text-[10px] font-medium`}>
+              {credentialTypeLabels[type]}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground font-mono truncate">
+            {credential.description || summaryFields.map(f => `${f.label}: ${maskValue(f.key, String(config[f.key] ?? ''))}`).join(' • ') || 'Sem descrição'}
+          </p>
+        </div>
+
+        {/* Config badges — desktop */}
+        <div className="hidden md:flex items-center gap-1.5 max-w-xs flex-wrap justify-end">
+          {summaryFields.map(f => (
+            <Badge key={f.key} variant="secondary" className="text-[10px] font-mono whitespace-nowrap">
+              {f.label}: {maskValue(f.key, String(config[f.key] ?? ''))}
             </Badge>
           ))}
-          {filledCount === 0 && (
-            <span className="text-[10px] text-muted-foreground italic">Sem campos preenchidos</span>
-          )}
         </div>
-        <p className="text-[10px] text-muted-foreground mt-2">
-          Atualizado: {new Date(credential.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
-        </p>
-      </CardContent>
+
+        {/* Time since update */}
+        <div className="text-right hidden sm:block">
+          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono ${timeSince.color} bg-secondary`}>
+            <Clock className="h-2.5 w-2.5" />
+            {timeSince.text}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
     </Card>
   );
 }
 
-/** Dialog for creating/editing a credential */
+/** Sheet for creating/editing a credential */
 function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -286,19 +309,11 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
   onSave: (data: CreateCredentialInput) => Promise<void>;
   isSaving: boolean;
 }) {
+  const UNCHANGED_SENTINEL = '••••••••';
   const [type, setType] = useState<CredentialType>(credential?.credential_type as CredentialType || 'agent');
   const [name, setName] = useState(credential?.name || '');
   const [description, setDescription] = useState(credential?.description || '');
-  const [config, setConfig] = useState<Record<string, string>>(() => {
-    if (credential?.config) {
-      const obj: Record<string, string> = {};
-      for (const [k, v] of Object.entries(credential.config as Record<string, unknown>)) {
-        obj[k] = String(v ?? '');
-      }
-      return obj;
-    }
-    return {};
-  });
+  const [config, setConfig] = useState<Record<string, string>>({});
 
   // Reset form when dialog opens with different credential
   const resetForm = (cred: Credential | null) => {
@@ -308,7 +323,8 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
     if (cred?.config) {
       const obj: Record<string, string> = {};
       for (const [k, v] of Object.entries(cred.config as Record<string, unknown>)) {
-        obj[k] = String(v ?? '');
+        // Mask sensitive fields when editing — show placeholder
+        obj[k] = sensitiveKeys.has(k) ? UNCHANGED_SENTINEL : String(v ?? '');
       }
       setConfig(obj);
     } else {
@@ -316,13 +332,10 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
     }
   };
 
-  // Reset when credential changes
   const isEditing = !!credential;
 
   const handleOpenChange = (v: boolean) => {
-    if (v) {
-      resetForm(credential);
-    }
+    if (v) resetForm(credential);
     onOpenChange(v);
   };
 
@@ -334,17 +347,27 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
       toast.error('Nome é obrigatório');
       return;
     }
-    // Validate required fields
+    // Validate required fields (skip sentinel for editing)
     for (const f of fields) {
-      if (f.required && !config[f.key]?.trim()) {
+      const val = config[f.key]?.trim();
+      if (f.required && !val) {
         toast.error(`Campo "${f.label}" é obrigatório`);
         return;
       }
     }
-    // Clean empty values
+    // Build clean config — keep original values for unchanged sensitive fields
     const cleanConfig: Record<string, string> = {};
+    const originalConfig = (credential?.config as Record<string, unknown>) ?? {};
     for (const [k, v] of Object.entries(config)) {
-      if (v.trim()) cleanConfig[k] = v.trim();
+      const trimmed = v.trim();
+      if (!trimmed) continue;
+      // If user didn't change a sensitive field, keep original DB value
+      if (trimmed === UNCHANGED_SENTINEL && isEditing) {
+        const orig = originalConfig[k];
+        if (orig) cleanConfig[k] = String(orig);
+      } else {
+        cleanConfig[k] = trimmed;
+      }
     }
     await onSave({
       name: name.trim(),
@@ -355,18 +378,18 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-heading">
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent className="bg-card border-border w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="font-heading">
             {isEditing ? 'Editar Credencial' : 'Nova Credencial'}
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {isEditing ? 'Atualize os dados da credencial.' : 'Crie uma credencial reutilizável para seus serviços.'}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           {/* Type */}
           <div className="space-y-2">
             <Label>Tipo de Credencial</Label>
@@ -409,31 +432,45 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
           {/* Dynamic config fields */}
           <div className="space-y-3">
             <Label className="text-xs text-muted-foreground uppercase tracking-wider">Configuração</Label>
-            {fields.map(f => (
-              <div key={f.key} className="space-y-1">
-                <Label className="text-xs">
-                  {f.label} {f.required && <span className="text-destructive">*</span>}
-                </Label>
-                {f.key === 'private_key' ? (
-                  <Textarea
-                    value={config[f.key] || ''}
-                    onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
-                    placeholder={f.placeholder}
-                    className="bg-secondary border-border font-mono text-xs min-h-[80px]"
-                    required={f.required}
-                  />
-                ) : (
-                  <Input
-                    type={f.type || 'text'}
-                    value={config[f.key] || ''}
-                    onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
-                    placeholder={f.placeholder}
-                    className="bg-secondary border-border font-mono text-xs"
-                    required={f.required}
-                  />
-                )}
-              </div>
-            ))}
+            {fields.map(f => {
+              const isSensitive = sensitiveKeys.has(f.key) || f.type === 'password';
+              const value = config[f.key] || '';
+              const isUnchanged = value === UNCHANGED_SENTINEL;
+              return (
+                <div key={f.key} className="space-y-1">
+                  <Label className="text-xs">
+                    {f.label} {f.required && <span className="text-destructive">*</span>}
+                    {isEditing && isSensitive && isUnchanged && (
+                      <span className="text-muted-foreground ml-1">(mantido)</span>
+                    )}
+                  </Label>
+                  {f.key === 'private_key' ? (
+                    <Textarea
+                      value={isUnchanged ? '' : value}
+                      onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={isUnchanged ? '••••••••  (clique para alterar)' : f.placeholder}
+                      className="bg-secondary border-border font-mono text-xs min-h-[80px]"
+                      required={f.required && !isUnchanged}
+                      onFocus={() => {
+                        if (isUnchanged) setConfig(prev => ({ ...prev, [f.key]: '' }));
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      type={isSensitive ? 'password' : (f.type || 'text')}
+                      value={isUnchanged ? UNCHANGED_SENTINEL : value}
+                      onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="bg-secondary border-border font-mono text-xs"
+                      required={f.required && !isUnchanged}
+                      onFocus={() => {
+                        if (isUnchanged) setConfig(prev => ({ ...prev, [f.key]: '' }));
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Description */}
@@ -447,17 +484,17 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
             />
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSaving} className="gap-2">
+            <Button type="submit" disabled={isSaving} className="flex-1 gap-2">
               {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
               {isEditing ? 'Salvar' : 'Criar'}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

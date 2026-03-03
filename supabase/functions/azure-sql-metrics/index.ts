@@ -18,15 +18,43 @@ interface MetricsResult {
   error_message: string | null;
 }
 
+async function resolveCredentials(config: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const credentialId = config.credential_id as string | undefined;
+  if (!credentialId) return config;
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  const { data: cred, error } = await supabase
+    .from("credentials")
+    .select("config")
+    .eq("id", credentialId)
+    .single();
+
+  if (error || !cred?.config) {
+    console.warn("Could not resolve credential_id, using inline config:", error?.message);
+    return config;
+  }
+
+  // Merge credential config (lower priority) with inline config (higher priority)
+  const credConfig = cred.config as Record<string, unknown>;
+  return { ...credConfig, ...config };
+}
+
 async function collectMetrics(config: Record<string, unknown>): Promise<MetricsResult> {
+  // Resolve credentials from credentials table if credential_id is present
+  const resolvedConfig = await resolveCredentials(config);
+
   // Read from check_config first, fall back to env vars for backward compatibility
-  const host = (config.host as string) || Deno.env.get("AZURE_SQL_HOST");
-  const database = (config.database as string) || Deno.env.get("AZURE_SQL_DATABASE");
-  const user = (config.username as string) || Deno.env.get("AZURE_SQL_USER");
-  const password = (config.password as string) || Deno.env.get("AZURE_SQL_PASSWORD");
+  const host = ((resolvedConfig.host as string) || Deno.env.get("AZURE_SQL_HOST") || "").trim();
+  const database = ((resolvedConfig.database as string) || Deno.env.get("AZURE_SQL_DATABASE") || "").trim();
+  const user = ((resolvedConfig.username as string) || Deno.env.get("AZURE_SQL_USER") || "").trim();
+  const password = ((resolvedConfig.password as string) || Deno.env.get("AZURE_SQL_PASSWORD") || "").trim();
 
   if (!host || !database || !user || !password) {
-    throw new Error("Azure SQL credentials not configured (check_config or env vars)");
+    throw new Error("Azure SQL credentials not configured (check_config, credential_id or env vars)");
   }
 
   const sqlConfig: sql.config = {
@@ -168,9 +196,59 @@ Deno.serve(async (req) => {
       } catch { /* no body */ }
     }
 
-    const start = Date.now();
-    const metrics = await collectMetrics(config);
-    const responseTime = Date.now() - start;
+    // Resolve credentials before choosing path
+    const resolvedConfig = await resolveCredentials(config);
+
+    let metrics: MetricsResult;
+    let responseTime: number;
+
+    // If agent_url is configured, delegate to the monitoring agent (bypasses firewall issues)
+    const agentUrl = (resolvedConfig.agent_url as string || config.agent_url as string || "").trim();
+    const agentToken = (resolvedConfig.agent_token as string || config.agent_token as string || "").trim();
+
+    if (agentUrl) {
+      const start = Date.now();
+      const agentPayload = {
+        host: ((resolvedConfig.host as string) || "").trim(),
+        database: ((resolvedConfig.database as string) || "").trim(),
+        username: ((resolvedConfig.username as string) || "").trim(),
+        password: ((resolvedConfig.password as string) || "").trim(),
+        port: resolvedConfig.port || 1433,
+        encrypt: resolvedConfig.encrypt ?? true,
+      };
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (agentToken) headers["Authorization"] = `Bearer ${agentToken}`;
+
+      const agentRes = await fetch(`${agentUrl.replace(/\/$/, "")}/mssql`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(agentPayload),
+      });
+      const agentData = await agentRes.json();
+      responseTime = Date.now() - start;
+
+      if (!agentData.success) {
+        throw new Error(agentData.error || "Agent MSSQL check failed");
+      }
+
+      metrics = {
+        cpu_percent: agentData.metrics.cpu_percent ?? 0,
+        memory_percent: agentData.metrics.memory_percent ?? 0,
+        storage_percent: agentData.metrics.storage_percent ?? 0,
+        active_connections: agentData.metrics.active_connections ?? 0,
+        avg_response_time: agentData.metrics.avg_response_time ?? responseTime,
+        status: agentData.metrics.status ?? "online",
+        details: agentData.metrics.details ?? {},
+        error_message: agentData.metrics.error_message ?? null,
+      };
+    } else {
+      // Direct connection (original path)
+      const start = Date.now();
+      metrics = await collectMetrics(config);
+      responseTime = Date.now() - start;
+    }
+
     metrics.avg_response_time = responseTime;
 
     if (serviceId) {
