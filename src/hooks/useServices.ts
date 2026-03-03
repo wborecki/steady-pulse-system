@@ -75,7 +75,7 @@ export function useCreateService() {
       if (data?.id) {
         const ct = (service as Record<string, unknown>).check_type as string || 'http';
         const infraTypes = ['systemctl', 'container', 'cloudwatch', 'sql_query', 'mongodb'];
-        const defaults: Record<string, unknown>[] = [];
+        const defaults: { service_id: string; metric: string; operator: string; threshold: number; severity: string }[] = [];
 
         // All types get response_time threshold
         defaults.push({ service_id: data.id, metric: 'response_time', operator: 'gt', threshold: 5000, severity: 'warning' });
@@ -95,7 +95,8 @@ export function useCreateService() {
         }
 
         if (defaults.length > 0) {
-          await supabase.from('alert_thresholds').insert(defaults);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await supabase.from('alert_thresholds').insert(defaults as any);
         }
       }
 
