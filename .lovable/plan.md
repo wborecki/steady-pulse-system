@@ -1,45 +1,39 @@
 
 
-## Status do MonitorHub — O que já está pronto e o que falta
+## Auto-Discovery de Serviços no Agente
 
-### Já corrigido nesta sessão
-- **ServiceRow labels contextuais** — Pool/DAG para Airflow, Conn/Cache para PostgreSQL, etc.
-- **Reports alinhamento** — tabelas MTTR/MTBF e ranking corrigidas
-- **Limpeza do banco** — só Airflow Solutions in BI permanece
+A sua ideia é excelente. O agente já faz auto-discovery de containers Docker (`/containers` lista tudo automaticamente), mas para systemctl ele precisa dos nomes. A solução é:
 
-### O que ainda falta (do plano original)
+### Abordagem: Botão "Descobrir Serviços" no formulário
 
-```text
-#   ITEM                                    STATUS      ESFORÇO
-────────────────────────────────────────────────────────────────
-4   Label "Colapsar" na sidebar             ✅ FEITO     —
-5   Empty state guiado em Services          PENDENTE    ~15 min
-6   Confirmação ao deletar threshold        PENDENTE    ~10 min
-8   Responsividade header ServiceDetail     PENDENTE    ~10 min
-2   Email real (send-notification)          PENDENTE    ~30 min
-3   URL placeholder no install-agent.sh     PENDENTE    ~5 min
-7   Dark/Light mode toggle                  ✅ FEITO     —
-```
+**1. Novo endpoint no agente Python (`/systemctl/list`)**
+- Lista todos os serviços systemd habilitados/ativos automaticamente via `systemctl list-units --type=service --state=running`
+- Retorna array com nomes dos serviços encontrados
 
-Olhando o screenshot, os itens 4 (Colapsar) e 7 (Modo Claro) já estão implementados.
+**2. Nova edge function `discover-services`**
+- Recebe `agent_url` + `token`, chama `/systemctl/list` e `/containers` no agente
+- Retorna lista unificada de serviços systemctl e containers Docker encontrados
 
-### Pendentes reais — 3 melhorias de UX
+**3. UX no formulário `AddServiceForm`**
+- Ao selecionar tipo Systemctl ou Container e preencher a URL do agente, aparece um botão **"Descobrir Serviços"**
+- Ao clicar, chama a edge function que consulta o agente
+- Exibe lista com checkboxes dos serviços encontrados (ex: `nginx.service`, `postgresql.service`, `docker.service`)
+- O usuário marca quais quer monitorar — sem precisar digitar nada
 
-1. **Empty state na página Serviços** — quando não há serviços (ou todos filtrados), mostrar ícone + botão "Adicionar primeiro serviço" em vez de texto seco.
+### Sobre a arquitetura (servidor único vs separado)
 
-2. **Confirmação ao deletar threshold** — no `ThresholdConfigPanel.tsx`, envolver o botão de excluir com um `AlertDialog` pedindo confirmação antes de remover.
+A abordagem atual (separar) é a correta para produção. Motivos:
+- Cada serviço tem seus próprios thresholds, alertas e histórico independente
+- Ferramentas como Datadog, Zabbix e Grafana fazem exatamente assim
+- Um "servidor" como entrada única misturaria métricas de coisas diferentes (nginx vs postgresql) num único gráfico
 
-3. **Header responsivo no ServiceDetail** — os botões (Manutenção, Editar, Excluir, Verificar) empilham mal em mobile. Mudar para `flex-col` em telas pequenas.
+O que podemos fazer é adicionar um **atalho de cadastro em lote**: ao descobrir 5 serviços no agente, o usuário seleciona quais quer e cria todos de uma vez, cada um como entrada separada mas compartilhando a mesma `agent_url`.
 
-### Pendentes opcionais (infra/backend)
+### Resumo das mudanças
 
-4. **URL do install-agent.sh** — substituir placeholder `SEU_REPO` pela URL real do repositório publicado.
-
-5. **Email real no send-notification** — atualmente só faz `console.log`. Precisa integrar um serviço de email (pode ser feito com o domínio de email do projeto).
-
-### Resumo
-
-O sistema está **funcional e entregável**. Os 3 itens pendentes de UX são melhorias de polish, não bloqueiam uso em produção. O email e o script do agente são melhorias de infraestrutura que podem ser feitas depois.
-
-Se quiser, posso implementar os 3 itens de UX (empty state + confirmação threshold + header mobile) em um batch rápido.
+| Arquivo | Mudança |
+|---|---|
+| `docs/monitoring-agent.py` | Novo endpoint `GET /systemctl/list` |
+| `supabase/functions/discover-services/index.ts` | Nova edge function para proxy de discovery |
+| `src/components/monitoring/AddServiceForm.tsx` | Botão "Descobrir" + checkboxes de seleção |
 
