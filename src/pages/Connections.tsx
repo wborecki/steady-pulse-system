@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageLoader } from '@/components/PageLoader';
 import { Button } from '@/components/ui/button';
@@ -46,10 +46,9 @@ const typeColors: Record<CredentialType, string> = {
   http_auth: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
 };
 
-/** Fields that should always be masked (sensitive data) */
+/** Fields that should always be masked (passwords only — once set, never revealed) */
 const sensitiveKeys = new Set([
-  'secret_access_key', 'password', 'token', 'private_key',
-  'ssh_password', 'api_key', 'secret', 'connection_string',
+  'password', 'private_key', 'ssh_password',
 ]);
 
 function maskValue(key: string, value: string): string {
@@ -307,34 +306,30 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
   isSaving: boolean;
 }) {
   const UNCHANGED_SENTINEL = '••••••••';
-  const [type, setType] = useState<CredentialType>(credential?.credential_type as CredentialType || 'agent');
-  const [name, setName] = useState(credential?.name || '');
-  const [description, setDescription] = useState(credential?.description || '');
+  const [type, setType] = useState<CredentialType>('agent');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [config, setConfig] = useState<Record<string, string>>({});
 
-  // Reset form when dialog opens with different credential
-  const resetForm = (cred: Credential | null) => {
+  // Sync form state whenever the dialog opens (or credential changes)
+  useEffect(() => {
+    if (!open) return;
+    const cred = credential;
     setType(cred?.credential_type as CredentialType || 'agent');
     setName(cred?.name || '');
     setDescription(cred?.description || '');
     if (cred?.config) {
       const obj: Record<string, string> = {};
       for (const [k, v] of Object.entries(cred.config as Record<string, unknown>)) {
-        // Mask sensitive fields when editing — show placeholder
         obj[k] = sensitiveKeys.has(k) ? UNCHANGED_SENTINEL : String(v ?? '');
       }
       setConfig(obj);
     } else {
       setConfig({});
     }
-  };
+  }, [open, credential]);
 
   const isEditing = !!credential;
-
-  const handleOpenChange = (v: boolean) => {
-    if (v) resetForm(credential);
-    onOpenChange(v);
-  };
 
   const fields = credentialFields[type] || [];
 
@@ -375,7 +370,7 @@ function CredentialDialog({ open, onOpenChange, credential, onSave, isSaving }: 
   };
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="bg-card border-border w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="font-heading">

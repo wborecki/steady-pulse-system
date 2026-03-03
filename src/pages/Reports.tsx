@@ -246,14 +246,14 @@ const Reports = () => {
       </div>
 
       {/* MTTR / MTBF / Ranking */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
         {/* Reliability Metrics */}
-        <div className="space-y-3">
+        <div className="flex flex-col space-y-3">
           <div className="flex items-center gap-2">
             <Timer className="h-4 w-4 text-primary" />
             <h2 className="font-heading font-semibold text-lg">MTTR & MTBF</h2>
           </div>
-          <Card className="glass-card">
+          <Card className="glass-card flex-1">
             <CardContent className="p-0">
               <table className="w-full text-xs font-mono table-fixed">
                 <thead>
@@ -288,12 +288,12 @@ const Reports = () => {
         </div>
 
         {/* Uptime Ranking */}
-        <div className="space-y-3">
+        <div className="flex flex-col space-y-3">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
             <h2 className="font-heading font-semibold text-lg">Ranking de Disponibilidade</h2>
           </div>
-          <Card className="glass-card">
+          <Card className="glass-card flex-1">
             <CardContent className="p-0">
               {uptimeRanking.length === 0 ? (
                 <p className="text-center py-4 text-muted-foreground font-mono text-xs">Sem dados</p>
