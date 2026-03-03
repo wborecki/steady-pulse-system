@@ -189,6 +189,9 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     // Filter services respecting their individual check_interval_seconds
+    // We subtract a 10-second tolerance to avoid off-by-one skips when pg_cron
+    // fires every minute and edge-function execution time causes small offsets.
+    const TOLERANCE_MS = 10_000;
     const now = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eligibleServices = (services || []).filter((s: any) => {
@@ -196,7 +199,7 @@ Deno.serve(async (req) => {
       if (!s.last_check) return true;
       const lastCheckMs = new Date(s.last_check).getTime();
       const intervalMs = (s.check_interval_seconds || 60) * 1000;
-      return (now - lastCheckMs) >= intervalMs;
+      return (now - lastCheckMs) >= (intervalMs - TOLERANCE_MS);
     });
     if (error) throw error;
 
