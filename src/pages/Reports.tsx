@@ -248,7 +248,7 @@ const Reports = () => {
       </div>
 
       {/* MTTR / MTBF / Ranking */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
         {/* Reliability Metrics */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -257,13 +257,13 @@ const Reports = () => {
           </div>
           <Card className="glass-card">
             <CardContent className="p-0">
-              <table className="w-full text-xs font-mono">
+              <table className="w-full text-xs font-mono table-fixed">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
-                    <th className="px-4 py-3 text-left">Serviço</th>
-                    <th className="px-4 py-3 text-right w-24">Incidentes</th>
-                    <th className="px-4 py-3 text-right w-20" title="Tempo Médio de Recuperação">MTTR</th>
-                    <th className="px-4 py-3 text-right w-20" title="Tempo Médio Entre Falhas">MTBF</th>
+                    <th className="px-3 py-3 text-left">Serviço</th>
+                    <th className="px-2 py-3 text-right w-20">Incidentes</th>
+                    <th className="px-2 py-3 text-right w-16" title="Tempo Médio de Recuperação">MTTR</th>
+                    <th className="px-2 py-3 text-right w-16" title="Tempo Médio Entre Falhas">MTBF</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -271,15 +271,15 @@ const Reports = () => {
                     const m = reliabilityMetrics[s.id] || { mttr: 0, mtbf: 0, incidents: 0 };
                     return (
                       <tr key={s.id} className="border-b border-border/50 cursor-pointer hover:bg-secondary/50" onClick={() => navigate(`/service/${s.id}`)}>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
+                        <td className="px-3 py-2.5 overflow-hidden">
+                          <div className="flex items-center gap-2 min-w-0">
                             <StatusIndicator status={s.status as any} size="sm" />
-                            <span className="truncate">{s.name}</span>
+                            <span className="truncate block">{s.name}</span>
                           </div>
                         </td>
-                        <td className={`px-4 py-2.5 text-right ${m.incidents > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{m.incidents}</td>
-                        <td className="px-4 py-2.5 text-right text-muted-foreground">{m.mttr > 0 ? `${m.mttr}min` : '--'}</td>
-                        <td className="px-4 py-2.5 text-right text-muted-foreground">{m.mtbf > 0 ? `${m.mtbf}h` : '--'}</td>
+                        <td className={`px-2 py-2.5 text-right w-20 ${m.incidents > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{m.incidents}</td>
+                        <td className="px-2 py-2.5 text-right w-16 text-muted-foreground">{m.mttr > 0 ? `${m.mttr}min` : '--'}</td>
+                        <td className="px-2 py-2.5 text-right w-16 text-muted-foreground">{m.mtbf > 0 ? `${m.mtbf}h` : '--'}</td>
                       </tr>
                     );
                   })}
@@ -304,22 +304,22 @@ const Reports = () => {
                   {uptimeRanking.map((s, i) => (
                     <div
                       key={s.id}
-                      className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/50 transition-colors"
+                      className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-secondary/50 transition-colors"
                       onClick={() => navigate(`/service/${s.id}`)}
                     >
-                      <span className={`text-xs font-mono w-8 text-right shrink-0 ${i < 3 && uptimeRanking.length > 3 ? 'text-destructive font-bold' : 'text-muted-foreground'}`}>
+                      <span className={`text-xs font-mono w-6 text-right shrink-0 ${i < 3 && uptimeRanking.length > 3 ? 'text-destructive font-bold' : 'text-muted-foreground'}`}>
                         #{uptimeRanking.length - i}
                       </span>
                       <StatusIndicator status={s.status as any} size="sm" />
                       <span className="text-xs font-mono flex-1 truncate min-w-0">{s.name}</span>
-                      <div className="w-24 h-2 bg-secondary rounded-full overflow-hidden shrink-0">
+                      <div className="w-16 h-2 bg-secondary rounded-full overflow-hidden shrink-0">
                         <div
                           className={`h-full rounded-full ${s.calculatedUptime >= 99 ? 'bg-success' : s.calculatedUptime >= 95 ? 'bg-warning' : 'bg-destructive'}`}
                           style={{ width: `${s.calculatedUptime}%` }}
                         />
                       </div>
-                      <span className={`text-xs font-mono w-16 text-right font-bold shrink-0 ${s.calculatedUptime >= 99 ? 'text-success' : s.calculatedUptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
-                        {s.calculatedUptime.toFixed(2)}%
+                      <span className={`text-xs font-mono w-14 text-right font-bold shrink-0 ${s.calculatedUptime >= 99 ? 'text-success' : s.calculatedUptime >= 95 ? 'text-warning' : 'text-destructive'}`}>
+                        {s.calculatedUptime.toFixed(1)}%
                       </span>
                     </div>
                   ))}
