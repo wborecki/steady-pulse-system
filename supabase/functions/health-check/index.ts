@@ -574,6 +574,12 @@ Deno.serve(async (req) => {
           checkResult = result;
           break;
         }
+        case "supabase_project": {
+          const result = await delegateToFunction("supabase-monitor");
+          if (result === null) continue;
+          checkResult = result;
+          break;
+        }
         default: {
           if (service.url) {
             checkResult = await checkHttp(service.url, service.check_config || {}, httpRules);

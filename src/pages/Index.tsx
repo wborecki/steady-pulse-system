@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
   server: 'Servidores', process: 'Processos', api: 'APIs',
+  container: 'Containers', infra: 'Infraestrutura',
 };
 
 const Index = () => {

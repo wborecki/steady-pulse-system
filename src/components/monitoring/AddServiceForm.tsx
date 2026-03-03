@@ -16,7 +16,7 @@ import type { Credential } from '@/hooks/useCredentials';
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
   server: 'Servidores', process: 'Processos', api: 'APIs',
-  container: 'Containers',
+  container: 'Containers', infra: 'Infraestrutura',
 };
 
 const categoryCheckTypes: Record<string, string[]> = {
@@ -27,6 +27,7 @@ const categoryCheckTypes: Record<string, string[]> = {
   process: ['process'],
   api: ['http'],
   container: ['container'],
+  infra: ['supabase_project'],
 };
 
 const checkTypeLabels: Record<string, string> = {
@@ -46,6 +47,7 @@ const checkTypeLabels: Record<string, string> = {
   systemctl: 'Systemctl (Linux)',
   container: 'Docker / Container',
   server: 'Métricas do Servidor',
+  supabase_project: 'Supabase (Projeto Completo)',
 };
 
 interface ServiceFormData {
@@ -275,6 +277,14 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           token: (form.get('agent_token') as string) || undefined,
         };
         break;
+      case 'supabase_project':
+        checkConfig = {
+          project_url: (form.get('sb_project_url') as string || '').trim(),
+          anon_key: (form.get('sb_anon_key') as string || '').trim(),
+          service_role_key: (form.get('sb_service_role_key') as string || '').trim(),
+          test_function: (form.get('sb_test_function') as string || '').trim() || undefined,
+        };
+        break;
     }
 
     const serviceData = {
@@ -391,6 +401,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       {/* Container fields */}
       {checkType === 'container' && <ContainerFields initialConfig={initialData?.check_config} />}
       {checkType === 'server' && <ServerFields initialConfig={initialData?.check_config} />}
+      {checkType === 'supabase_project' && <SupabaseProjectFields initialConfig={initialData?.check_config} />}
 
       {/* Interval */}
       <div className="space-y-2">
@@ -1341,6 +1352,63 @@ function ServerFields({ initialConfig }: { initialConfig?: Record<string, unknow
         <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
       </div>
       <AgentInstallInstructions token={agentToken} />
+    </div>
+  );
+}
+
+function SupabaseProjectFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
+  const [projectUrl, setProjectUrl] = useState((initialConfig?.project_url as string) || '');
+  const [anonKey, setAnonKey] = useState((initialConfig?.anon_key as string) || '');
+  const [serviceRoleKey, setServiceRoleKey] = useState((initialConfig?.service_role_key as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setProjectUrl(c.project_url || '');
+      setAnonKey(c.anon_key || '');
+      setServiceRoleKey(c.service_role_key || '');
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <CredentialSelector checkType="supabase_project" onSelect={handleCredential} />
+      <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+        <p className="text-xs text-foreground">
+          🟢 <strong>Monitoramento Supabase Completo</strong> — Verifica REST API, Auth, Realtime, Storage, Edge Functions e Database (conexões, cache hit, queries ativas, tamanho do banco).
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label>URL do Projeto</Label>
+        <Input name="sb_project_url" required placeholder="https://xyzcompany.supabase.co" className="bg-secondary border-border font-mono text-xs" value={projectUrl} onChange={e => setProjectUrl(e.target.value)} />
+        <p className="text-[10px] text-muted-foreground">Ex: https://seu-project-ref.supabase.co</p>
+      </div>
+      <div className="space-y-2">
+        <Label>Anon Key (publishable)</Label>
+        <Input name="sb_anon_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={anonKey} onChange={e => setAnonKey(e.target.value)} />
+        <p className="text-[10px] text-muted-foreground">Usada para verificar REST API, Realtime e Storage</p>
+      </div>
+      <div className="space-y-2">
+        <Label>Service Role Key</Label>
+        <Input name="sb_service_role_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={serviceRoleKey} onChange={e => setServiceRoleKey(e.target.value)} />
+        <p className="text-[10px] text-muted-foreground">Usada para verificar Database e Edge Functions (nunca exposta no client)</p>
+      </div>
+      <div className="space-y-2">
+        <Label>Edge Function para Teste (opcional)</Label>
+        <Input name="sb_test_function" placeholder="health-check" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.test_function as string) || ''} />
+        <p className="text-[10px] text-muted-foreground">Nome de uma função para testar o runtime. Padrão: health-check</p>
+      </div>
+      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1">
+        <p className="text-xs font-medium">O que é monitorado:</p>
+        <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc pl-4">
+          <li><strong>REST API</strong> — Latência e disponibilidade do PostgREST</li>
+          <li><strong>Auth (GoTrue)</strong> — Health check do serviço de autenticação</li>
+          <li><strong>Realtime</strong> — WebSocket gateway health</li>
+          <li><strong>Storage</strong> — Serviço de upload/download de arquivos</li>
+          <li><strong>Edge Functions</strong> — Runtime Deno disponível</li>
+          <li><strong>Database</strong> — Conexões, cache hit ratio, queries ativas, tamanho</li>
+        </ul>
+      </div>
     </div>
   );
 }

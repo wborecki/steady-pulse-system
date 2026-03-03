@@ -329,7 +329,7 @@ function isHttpType(checkType: string) {
   return ['http'].includes(checkType);
 }
 function isDbType(checkType: string) {
-  return ['sql_query', 'postgresql', 'mongodb', 'supabase'].includes(checkType);
+  return ['sql_query', 'postgresql', 'mongodb', 'supabase', 'supabase_project'].includes(checkType);
 }
 function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
@@ -359,6 +359,7 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   systemctl:         { cpu: true,  memory: true,  disk: true  },
   container:         { cpu: true,  memory: true,  disk: true  },
   server:            { cpu: true,  memory: true,  disk: true  },
+  supabase_project:   { cpu: true,  memory: true,  disk: true  },
 };
 
 const ServiceDetail = () => {
@@ -616,6 +617,13 @@ const ServiceDetail = () => {
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-sky-400" />
             <MetricCard label="Storage" value={Number(service.disk)} unit="%" color={Number(service.disk) > 90 ? 'text-red-400' : Number(service.disk) > 75 ? 'text-amber-400' : 'text-emerald-400'} />
             <MetricCard label="Conexões Ativas" value={(config._sql_details as Record<string, unknown>)?.active_connections as number ?? 0} unit="" color="text-violet-400" />
+          </>
+        ) : checkType === 'supabase_project' ? (
+          <>
+            <MetricCard label="Health Score" value={Number(service.cpu)} unit="%" color="text-emerald-400" invertBar />
+            <MetricCard label="Cache Hit" value={Number(service.memory)} unit="%" color="text-success" invertBar />
+            <MetricCard label="Conn %" value={Number(service.disk)} unit="%" color={Number(service.disk) > 80 ? 'text-red-400' : 'text-sky-400'} />
+            <MetricCard label="Latência" value={service.response_time} unit="ms" color="text-warning" />
           </>
         ) : (checkType === 'postgresql' || checkType === 'supabase') ? (
           <>
@@ -1282,6 +1290,166 @@ const ServiceDetail = () => {
         );
       })()}
 
+      {/* Supabase Project Details */}
+      {checkType === 'supabase_project' && (() => {
+        const details = (config as any)?._supabase_details;
+        if (!details) return null;
+        const checks = details.checks || [];
+        const summary = details.summary || {};
+        const db = details.database || {};
+        const dbConns = db.connections || {};
+        const activeQueries = db.active_queries || [];
+        return (
+          <div className="space-y-4">
+            {/* Sub-service status grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {checks.map((c: any) => (
+                <Card key={c.name} className="glass-card">
+                  <CardContent className="p-3 text-center">
+                    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-full mb-2 ${c.status === 'online' ? 'bg-success/20' : c.status === 'warning' ? 'bg-warning/20' : 'bg-destructive/20'}`}>
+                      <div className={`w-3 h-3 rounded-full ${c.status === 'online' ? 'bg-success' : c.status === 'warning' ? 'bg-warning' : 'bg-destructive'}`} />
+                    </div>
+                    <p className="text-xs font-heading font-semibold">{c.name}</p>
+                    <p className="text-[10px] font-mono text-muted-foreground">{c.response_time}ms</p>
+                    {c.error && <p className="text-[9px] text-destructive mt-1 truncate">{c.error}</p>}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Summary bar */}
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-heading font-semibold text-sm">Status dos Serviços</h3>
+                  <span className="text-xs text-muted-foreground">{summary.total || 0} serviços verificados</span>
+                </div>
+                <div className="flex gap-1 h-3 rounded-full overflow-hidden bg-secondary">
+                  {(summary.online ?? 0) > 0 && <div className="bg-success transition-all" style={{ width: `${((summary.online ?? 0) / (summary.total || 1)) * 100}%` }} />}
+                  {(summary.warning ?? 0) > 0 && <div className="bg-warning transition-all" style={{ width: `${((summary.warning ?? 0) / (summary.total || 1)) * 100}%` }} />}
+                  {(summary.offline ?? 0) > 0 && <div className="bg-destructive transition-all" style={{ width: `${((summary.offline ?? 0) / (summary.total || 1)) * 100}%` }} />}
+                </div>
+                <div className="flex gap-4 mt-2 text-xs">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success" />{summary.online ?? 0} Online</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning" />{summary.warning ?? 0} Warning</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-destructive" />{summary.offline ?? 0} Offline</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Database details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Database</h3>
+                  <div className="space-y-2">
+                    {[
+                      { label: 'Versão', value: (db.version as string)?.replace(/^PostgreSQL\s+/i, 'PG ').split(' on ')[0] || 'N/A' },
+                      { label: 'Tamanho', value: db.db_size || 'N/A' },
+                      { label: 'Tabelas', value: db.table_count ?? 'N/A' },
+                      { label: 'Cache Hit', value: `${db.cache_hit_ratio ?? 0}%`, color: (db.cache_hit_ratio ?? 100) < 80 ? 'text-destructive' : 'text-success' },
+                    ].map(item => (
+                      <div key={item.label} className="flex justify-between items-center">
+                        <span className="text-xs text-muted-foreground">{item.label}</span>
+                        <span className={`text-xs font-mono font-semibold ${(item as any).color || 'text-foreground'}`}>{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Conexões</h3>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    {[
+                      { label: 'Total', value: dbConns.total ?? 0, color: 'text-foreground' },
+                      { label: 'Ativas', value: dbConns.active ?? 0, color: 'text-primary' },
+                      { label: 'Idle', value: dbConns.idle ?? 0, color: 'text-muted-foreground' },
+                      { label: 'Max', value: dbConns.max ?? 0, color: 'text-warning' },
+                    ].map(c => (
+                      <div key={c.label}>
+                        <p className={`text-xl font-heading font-bold ${c.color}`}>{c.value}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{c.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {dbConns.max > 0 && (
+                    <div className="mt-3">
+                      <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                        <span>Uso</span>
+                        <span>{dbConns.percent ?? 0}%</span>
+                      </div>
+                      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${(dbConns.percent ?? 0) > 80 ? 'bg-destructive' : (dbConns.percent ?? 0) > 60 ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${Math.min(dbConns.percent ?? 0, 100)}%` }} />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Active queries */}
+            {activeQueries.length > 0 && (
+              <Card className="glass-card">
+                <CardContent className="p-4">
+                  <h3 className="font-heading font-semibold text-sm mb-3">Queries Ativas</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground text-xs">
+                          <th className="p-2 text-left">PID</th>
+                          <th className="p-2 text-left">Duração</th>
+                          <th className="p-2 text-left">Estado</th>
+                          <th className="p-2 text-left">Wait</th>
+                          <th className="p-2 text-left">Query</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeQueries.map((q: any, i: number) => (
+                          <tr key={i} className="border-b border-border/50">
+                            <td className="p-2 text-xs">{q.pid}</td>
+                            <td className="p-2 text-xs">{q.duration}</td>
+                            <td className="p-2 text-xs">{q.state}</td>
+                            <td className="p-2 text-xs">{q.wait_event || '-'}</td>
+                            <td className="p-2 text-xs max-w-[300px] truncate">{q.query}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Latency per service */}
+            <Card className="glass-card">
+              <CardContent className="p-4">
+                <h3 className="font-heading font-semibold text-sm mb-3">Latência por Serviço</h3>
+                <div className="space-y-2">
+                  {checks.map((c: any) => {
+                    const maxLatency = Math.max(...checks.map((x: any) => x.response_time), 1);
+                    return (
+                      <div key={c.name} className="flex items-center gap-3">
+                        <span className="text-xs font-mono w-24 shrink-0">{c.name}</span>
+                        <div className="flex-1 h-5 bg-secondary rounded-full overflow-hidden relative">
+                          <div
+                            className={`h-full rounded-full ${c.status === 'online' ? 'bg-primary/60' : c.status === 'warning' ? 'bg-warning/60' : 'bg-destructive/60'}`}
+                            style={{ width: `${(c.response_time / maxLatency) * 100}%` }}
+                          />
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono font-semibold">
+                            {c.response_time}ms
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* MongoDB Details */}
       {checkType === 'mongodb' && (() => {
         const details = (config as any)?._mongo_details;
@@ -1749,6 +1917,7 @@ const ServiceDetail = () => {
                 <MetricsChart title={
                   isAirflowType(checkType) ? "Pool Utilization (%)" :
                   (checkType === 'postgresql' || checkType === 'supabase') ? "Conexões (%)" :
+                  checkType === 'supabase_project' ? "Health Score (%)" :
                   checkType === 'mongodb' ? "Conexões (%)" :
                   checkType === 'systemctl' ? "CPU Servidor (%)" :
                   checkType === 'container' ? "CPU Containers (%)" :
@@ -1765,6 +1934,7 @@ const ServiceDetail = () => {
                 <MetricsChart title={
                   isAirflowType(checkType) ? "DAG Success Rate (%)" :
                   (checkType === 'postgresql' || checkType === 'supabase') ? "Cache Hit Ratio (%)" :
+                  checkType === 'supabase_project' ? "Cache Hit Ratio (%)" :
                   checkType === 'mongodb' ? "Memória (%)" :
                   checkType === 'systemctl' ? "RAM Servidor (%)" :
                   checkType === 'container' ? "Memória Containers (%)" :
@@ -1780,6 +1950,7 @@ const ServiceDetail = () => {
               <div className="glass-card rounded-lg p-4">
                 <MetricsChart title={
                   checkType === 'sql_query' ? "Storage (%)" :
+                  checkType === 'supabase_project' ? "Conexões DB (%)" :
                   isAgentType(checkType) ? "Disco Servidor (%)" :
                   checkType === 'lambda' ? "Throttles" :
                   checkType === 'mongodb' ? "Storage (%)" :
@@ -1828,8 +1999,8 @@ const ServiceDetail = () => {
                 <th className="p-3 text-left">Latência</th>
                 {isHttpType(checkType) && <th className="p-3 text-left">HTTP</th>}
                 {(isInfraType(checkType) || isDbType(checkType)) && <>
-                  <th className="p-3 text-left">{(checkType === 'postgresql' || checkType === 'supabase') ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
-                  <th className="p-3 text-left">{(checkType === 'postgresql' || checkType === 'supabase') ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
+                  <th className="p-3 text-left">{checkType === 'supabase_project' ? 'Health' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
+                  <th className="p-3 text-left">{checkType === 'supabase_project' ? 'Cache' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
                 </>}
                 {isAirflowType(checkType) && <>
                   <th className="p-3 text-left">Pool</th>

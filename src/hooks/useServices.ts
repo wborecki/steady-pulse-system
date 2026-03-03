@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useRefreshInterval } from './useRefreshInterval';
 
 export interface DbService {
   id: string;
@@ -24,6 +25,7 @@ export interface DbService {
 }
 
 export function useServices() {
+  const refetchInterval = useRefreshInterval(30000);
   return useQuery({
     queryKey: ['services'],
     queryFn: async () => {
@@ -34,11 +36,12 @@ export function useServices() {
       if (error) throw error;
       return data as DbService[];
     },
-    refetchInterval: 30000,
+    refetchInterval,
   });
 }
 
 export function useService(id: string | undefined) {
+  const refetchInterval = useRefreshInterval(15000);
   return useQuery({
     queryKey: ['service', id],
     queryFn: async () => {
@@ -52,7 +55,7 @@ export function useService(id: string | undefined) {
       return data as DbService;
     },
     enabled: !!id,
-    refetchInterval: 15000,
+    refetchInterval,
   });
 }
 

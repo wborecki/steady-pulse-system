@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
+import { useRefreshInterval } from './useRefreshInterval';
 
 export interface DbAlert {
   id: string;
@@ -20,6 +21,7 @@ export interface AlertFilters {
 }
 
 export function useAlerts(filters?: AlertFilters, page = 0, perPage = 30) {
+  const refetchInterval = useRefreshInterval(15000);
   return useQuery({
     queryKey: ['alerts', filters, page],
     queryFn: async () => {
@@ -51,7 +53,7 @@ export function useAlerts(filters?: AlertFilters, page = 0, perPage = 30) {
       if (error) throw error;
       return { data: data as DbAlert[], count: count ?? 0 };
     },
-    refetchInterval: 15000,
+    refetchInterval,
   });
 }
 

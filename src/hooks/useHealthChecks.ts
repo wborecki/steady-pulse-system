@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useRefreshInterval } from './useRefreshInterval';
 
 export interface DbHealthCheck {
   id: string;
@@ -15,6 +16,7 @@ export interface DbHealthCheck {
 }
 
 export function useHealthCheckHistory(serviceId: string | undefined, limit = 50) {
+  const refetchInterval = useRefreshInterval(30000);
   return useQuery({
     queryKey: ['health_checks', serviceId, limit],
     queryFn: async () => {
@@ -29,7 +31,7 @@ export function useHealthCheckHistory(serviceId: string | undefined, limit = 50)
       return data as DbHealthCheck[];
     },
     enabled: !!serviceId,
-    refetchInterval: 30000,
+    refetchInterval,
   });
 }
 
@@ -43,6 +45,7 @@ export function useFilteredHealthChecks(
   } = {}
 ) {
   const { statusFilter, periodHours = 24, page = 0, perPage = 50 } = options;
+  const refetchInterval = useRefreshInterval(30000);
   return useQuery({
     queryKey: ['health_checks_filtered', serviceId, statusFilter, periodHours, page, perPage],
     queryFn: async () => {
@@ -65,11 +68,12 @@ export function useFilteredHealthChecks(
       return { data: data as DbHealthCheck[], count: count ?? 0 };
     },
     enabled: !!serviceId,
-    refetchInterval: 30000,
+    refetchInterval,
   });
 }
 
 export function useAllRecentHealthChecks() {
+  const refetchInterval = useRefreshInterval(30000);
   return useQuery({
     queryKey: ['health_checks_recent'],
     queryFn: async () => {
@@ -82,11 +86,12 @@ export function useAllRecentHealthChecks() {
       if (error) throw error;
       return data as DbHealthCheck[];
     },
-    refetchInterval: 30000,
+    refetchInterval,
   });
 }
 
 export function useHealthChecksForPeriod(periodDays: number = 7) {
+  const refetchInterval = useRefreshInterval(60000);
   return useQuery({
     queryKey: ['health_checks_period', periodDays],
     queryFn: async () => {
@@ -99,7 +104,7 @@ export function useHealthChecksForPeriod(periodDays: number = 7) {
       if (error) throw error;
       return data as DbHealthCheck[];
     },
-    refetchInterval: 60000,
+    refetchInterval,
   });
 }
 
