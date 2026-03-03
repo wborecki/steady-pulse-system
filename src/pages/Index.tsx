@@ -19,7 +19,8 @@ const categoryLabels: Record<string, string> = {
 const Index = () => {
   const navigate = useNavigate();
   const { data: services = [], isLoading } = useServices();
-  const { data: alerts = [] } = useAlerts();
+  const { data: alertResult } = useAlerts();
+  const alerts = alertResult?.data ?? [];
   const { data: recentChecks = [] } = useAllRecentHealthChecks();
   const triggerCheck = useTriggerHealthCheck();
 

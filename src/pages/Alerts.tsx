@@ -1,28 +1,40 @@
-import { useAlerts, useAcknowledgeAlert, useAcknowledgeAll } from '@/hooks/useAlerts';
+import { useState } from 'react';
+import { useAlerts, useAcknowledgeAlert, useAcknowledgeAll, AlertFilters } from '@/hooks/useAlerts';
+import { useServices } from '@/hooks/useServices';
 import { AlertItem } from '@/components/monitoring/AlertItem';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+const PER_PAGE = 30;
+
 const Alerts = () => {
-  const { data: alerts = [], isLoading } = useAlerts();
+  const [filters, setFilters] = useState<AlertFilters>({ type: 'all', serviceId: 'all', period: 'all', status: 'all' });
+  const [page, setPage] = useState(0);
+  const { data: services = [] } = useServices();
+  const { data: result, isLoading } = useAlerts(filters, page, PER_PAGE);
+  const alerts = result?.data ?? [];
+  const totalCount = result?.count ?? 0;
+  const totalPages = Math.ceil(totalCount / PER_PAGE);
+
   const acknowledgeAlert = useAcknowledgeAlert();
   const acknowledgeAll = useAcknowledgeAll();
 
   const handleAcknowledge = (id: string) => {
-    acknowledgeAlert.mutate(id, {
-      onSuccess: () => toast.success('Alerta reconhecido'),
-    });
+    acknowledgeAlert.mutate(id, { onSuccess: () => toast.success('Alerta reconhecido') });
   };
 
   const handleAcknowledgeAll = () => {
-    acknowledgeAll.mutate(undefined, {
-      onSuccess: () => toast.success('Todos os alertas foram reconhecidos'),
-    });
+    acknowledgeAll.mutate(undefined, { onSuccess: () => toast.success('Todos os alertas foram reconhecidos') });
   };
 
-  const unack = alerts.filter(a => !a.acknowledged);
-  const ack = alerts.filter(a => a.acknowledged);
+  const updateFilter = (key: keyof AlertFilters, value: string) => {
+    setFilters(f => ({ ...f, [key]: value }));
+    setPage(0);
+  };
+
+  const pendingCount = alerts.filter(a => !a.acknowledged).length;
 
   if (isLoading) {
     return (
@@ -37,64 +49,105 @@ const Alerts = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-heading font-bold">Alertas</h1>
-          <p className="text-sm text-muted-foreground font-mono">{unack.length} alertas pendentes</p>
+          <p className="text-sm text-muted-foreground font-mono">{totalCount} alertas encontrados</p>
         </div>
-        {unack.length > 0 && (
+        {pendingCount > 0 && (
           <Button variant="outline" onClick={handleAcknowledgeAll} className="gap-2">
             <CheckCheck className="h-4 w-4" /> Reconhecer Todos
           </Button>
         )}
       </div>
 
-      {unack.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Pendentes</h2>
-          <div className="space-y-2">
-            {unack.map(a => (
-              <AlertItem
-                key={a.id}
-                alert={{
-                  id: a.id,
-                  serviceId: a.service_id,
-                  serviceName: a.services?.name || 'Serviço',
-                  type: a.type as 'critical' | 'warning' | 'info',
-                  message: a.message,
-                  timestamp: a.created_at,
-                  acknowledged: a.acknowledged,
-                }}
-                onAcknowledge={handleAcknowledge}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <Select value={filters.type} onValueChange={v => updateFilter('type', v)}>
+          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            <SelectItem value="critical">Crítico</SelectItem>
+            <SelectItem value="warning">Warning</SelectItem>
+            <SelectItem value="info">Info</SelectItem>
+          </SelectContent>
+        </Select>
 
-      {ack.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Reconhecidos</h2>
-          <div className="space-y-2 opacity-60">
-            {ack.map(a => (
-              <AlertItem
-                key={a.id}
-                alert={{
-                  id: a.id,
-                  serviceId: a.service_id,
-                  serviceName: a.services?.name || 'Serviço',
-                  type: a.type as 'critical' | 'warning' | 'info',
-                  message: a.message,
-                  timestamp: a.created_at,
-                  acknowledged: a.acknowledged,
-                }}
-              />
+        <Select value={filters.serviceId} onValueChange={v => updateFilter('serviceId', v)}>
+          <SelectTrigger className="w-44 bg-secondary border-border h-9 text-xs">
+            <SelectValue placeholder="Serviço" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os serviços</SelectItem>
+            {services.map(s => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
-          </div>
-        </div>
-      )}
+          </SelectContent>
+        </Select>
 
-      {alerts.length === 0 && (
+        <Select value={filters.period} onValueChange={v => updateFilter('period', v)}>
+          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+            <SelectValue placeholder="Período" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todo período</SelectItem>
+            <SelectItem value="1">Última hora</SelectItem>
+            <SelectItem value="6">Últimas 6h</SelectItem>
+            <SelectItem value="24">Últimas 24h</SelectItem>
+            <SelectItem value="168">Últimos 7 dias</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.status} onValueChange={v => updateFilter('status', v)}>
+          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="pending">Pendentes</SelectItem>
+            <SelectItem value="acknowledged">Reconhecidos</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Alert list */}
+      {alerts.length > 0 ? (
+        <div className="space-y-2">
+          {alerts.map(a => (
+            <AlertItem
+              key={a.id}
+              alert={{
+                id: a.id,
+                serviceId: a.service_id,
+                serviceName: a.services?.name || 'Serviço',
+                type: a.type as 'critical' | 'warning' | 'info',
+                message: a.message,
+                timestamp: a.created_at,
+                acknowledged: a.acknowledged,
+              }}
+              onAcknowledge={!a.acknowledged ? handleAcknowledge : undefined}
+            />
+          ))}
+        </div>
+      ) : (
         <div className="text-center py-12">
           <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-          <p className="text-muted-foreground font-mono">Nenhum alerta registrado</p>
+          <p className="text-muted-foreground font-mono">Nenhum alerta encontrado</p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4">
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm font-mono text-muted-foreground">
+            Página {page + 1} de {totalPages}
+          </span>
+          <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>
