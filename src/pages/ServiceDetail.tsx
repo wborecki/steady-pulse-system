@@ -1354,7 +1354,7 @@ const ServiceDetail = () => {
       )}
 
       {/* Threshold Config Panel */}
-      <ThresholdConfigPanel serviceId={service.id} checkType={checkType} />
+      <ThresholdConfigPanel serviceId={service.id} checkType={checkType} serviceMetrics={{ cpu: service.cpu, memory: service.memory, disk: service.disk, response_time: service.response_time }} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
