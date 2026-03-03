@@ -131,6 +131,13 @@ const Index = () => {
           <h1 className="text-2xl font-heading font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground font-mono">
             Visão geral do sistema • {new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {(() => {
+              const lastChecks = services.filter(s => s.last_check).map(s => new Date(s.last_check!).getTime());
+              if (lastChecks.length === 0) return null;
+              const mostRecent = Math.max(...lastChecks);
+              const minutesAgo = Math.round((Date.now() - mostRecent) / 60000);
+              return ` • Última verificação: ${minutesAgo < 1 ? 'agora' : `${minutesAgo}min atrás`}`;
+            })()}
           </p>
         </div>
         <div className="flex items-center gap-2">
