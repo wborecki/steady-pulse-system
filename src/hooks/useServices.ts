@@ -66,6 +66,17 @@ export function useCreateService() {
         .select()
         .single();
       if (error) throw error;
+
+      // Create default thresholds for the new service
+      if (data?.id) {
+        const defaults = [
+          { service_id: data.id, metric: 'cpu', operator: 'gt', threshold: 90, severity: 'critical' },
+          { service_id: data.id, metric: 'memory', operator: 'gt', threshold: 85, severity: 'warning' },
+          { service_id: data.id, metric: 'disk', operator: 'gt', threshold: 90, severity: 'critical' },
+        ];
+        await supabase.from('alert_thresholds').insert(defaults as any);
+      }
+
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['services'] }),
