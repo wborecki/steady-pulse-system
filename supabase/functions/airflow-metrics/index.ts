@@ -151,9 +151,12 @@ async function collectAirflowMetrics(config: AirflowConfig, authHeader: string) 
   } catch { /* optional */ }
 
   // Determine status
+  // Only mark offline if scheduler/metadatabase are down
+  // Warning only for import errors or very low success rate (not just a few failed runs)
   let status: "online" | "warning" | "offline" = "online";
   if (!schedulerOk || !metadatabaseOk) status = "offline";
-  else if (failedRuns > 5 || importErrors > 0 || successRate < 80) status = "warning";
+  else if (importErrors > 0 || successRate < 50) status = "warning";
+  else if (failedRuns > 10 && successRate < 70) status = "warning";
 
   return {
     status,
