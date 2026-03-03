@@ -165,21 +165,21 @@ const Index = () => {
       )}
 
       {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="glass-card rounded-lg p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="glass-card rounded-lg p-4 flex flex-col">
           <MetricsChart title="Latência Média (ms)" data={responseTimeChartData} color="hsl(175, 80%, 50%)" unit="ms" />
         </div>
-        <div className="glass-card rounded-lg p-4">
+        <div className="glass-card rounded-lg p-4 flex flex-col">
           <MetricsChart title="Disponibilidade (%)" data={availabilityChartData} color="hsl(145, 65%, 45%)" unit="%" />
         </div>
       </div>
 
       {/* Charts Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="glass-card rounded-lg p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        <div className="glass-card rounded-lg p-4 flex flex-col">
           <CategoryBarChart title="Incidentes por Categoria" data={incidentsByCategory} />
         </div>
-        <div className="glass-card rounded-lg p-4">
+        <div className="glass-card rounded-lg p-4 flex flex-col">
           <MetricsChart title="Timeline de Incidentes (24h)" data={incidentTimeline} color="hsl(38, 92%, 55%)" unit="" />
         </div>
       </div>

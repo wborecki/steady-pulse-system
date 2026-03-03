@@ -287,15 +287,19 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         break;
     }
 
-    const serviceData = {
+    const serviceData: Record<string, unknown> = {
       name: form.get('name') as string,
       category,
       url,
       description: (form.get('description') as string) || '',
       check_type: checkType,
       check_config: checkConfig,
-      check_interval_seconds: Number(form.get('interval') || 60),
     };
+
+    // Only include interval on create; in edit mode it's managed via Settings
+    if (mode !== 'edit') {
+      serviceData.check_interval_seconds = Number(form.get('interval') || 60);
+    }
 
     try {
       if (mode === 'edit' && initialData?.id) {
@@ -403,7 +407,8 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       {checkType === 'server' && <ServerFields initialConfig={initialData?.check_config} />}
       {checkType === 'supabase_project' && <SupabaseProjectFields initialConfig={initialData?.check_config} />}
 
-      {/* Interval */}
+      {/* Interval - only shown in create mode; in edit mode, interval is changed via Settings */}
+      {mode !== 'edit' && (
       <div className="space-y-2">
         <Label>Intervalo de verificação</Label>
         <Select name="interval" defaultValue={String(initialData?.check_interval_seconds || 60)}>
@@ -416,6 +421,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           </SelectContent>
         </Select>
       </div>
+      )}
 
       {/* Description */}
       <div className="space-y-2">

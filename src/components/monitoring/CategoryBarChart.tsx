@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from 'recharts';
 import { useMemo } from 'react';
 
 interface CategoryBarChartProps {
@@ -78,7 +78,10 @@ export function CategoryBarChart({ title, data }: CategoryBarChartProps) {
                 fontSize: '12px',
                 fontFamily: 'JetBrains Mono',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                color: 'hsl(210 20% 90%)',
               }}
+              labelStyle={{ color: 'hsl(210 20% 98%)' }}
+              itemStyle={{ color: 'hsl(210 20% 85%)' }}
               formatter={(val: number) => [val, 'Incidentes']}
               labelFormatter={(label) => label}
             />
@@ -86,9 +89,21 @@ export function CategoryBarChart({ title, data }: CategoryBarChartProps) {
               dataKey="value"
               radius={[6, 6, 0, 0]}
               maxBarSize={48}
+              minPointSize={8}
               animationDuration={800}
               animationEasing="ease-out"
             >
+              <LabelList
+                dataKey="value"
+                position="top"
+                style={{
+                  fontSize: 11,
+                  fontFamily: 'JetBrains Mono',
+                  fill: 'hsl(215 20% 75%)',
+                  fontWeight: 600,
+                }}
+                offset={6}
+              />
               {chartData.map((_entry, index) => (
                 <Cell
                   key={`cell-${index}`}

@@ -14,16 +14,33 @@ import { useSoundAlerts } from "@/hooks/useSoundAlerts";
 import { PageLoader } from "@/components/PageLoader";
 import Login from "./pages/Login";
 
+// Auto-reload on chunk load failure (stale cache after deploy)
+function lazyWithRetry(importFn: () => Promise<{ default: React.ComponentType }>) {
+  return lazy(() =>
+    importFn().catch(() => {
+      // If chunk fails, hard-reload once to get fresh HTML with new hashes
+      const reloaded = sessionStorage.getItem('chunk-reload');
+      if (!reloaded) {
+        sessionStorage.setItem('chunk-reload', '1');
+        window.location.reload();
+      }
+      // Clear flag on success after reload
+      sessionStorage.removeItem('chunk-reload');
+      return importFn();
+    })
+  );
+}
+
 // Lazy-loaded pages — each chunk is loaded on demand (P5: code splitting)
-const Index = lazy(() => import("./pages/Index"));
-const Services = lazy(() => import("./pages/Services"));
-const ServiceDetail = lazy(() => import("./pages/ServiceDetail"));
-const Alerts = lazy(() => import("./pages/Alerts"));
-const Reports = lazy(() => import("./pages/Reports"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const Documentation = lazy(() => import("./pages/Documentation"));
-const Connections = lazy(() => import("./pages/Connections"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+const Index = lazyWithRetry(() => import("./pages/Index"));
+const Services = lazyWithRetry(() => import("./pages/Services"));
+const ServiceDetail = lazyWithRetry(() => import("./pages/ServiceDetail"));
+const Alerts = lazyWithRetry(() => import("./pages/Alerts"));
+const Reports = lazyWithRetry(() => import("./pages/Reports"));
+const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
+const Documentation = lazyWithRetry(() => import("./pages/Documentation"));
+const Connections = lazyWithRetry(() => import("./pages/Connections"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({

@@ -2,7 +2,7 @@ import { Shield } from 'lucide-react';
 
 export function PageLoader() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-in fade-in duration-300">
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4 animate-in fade-in duration-300 bg-background">
       {/* Pulse ring + icon */}
       <div className="relative flex items-center justify-center">
         {/* Outer pulse ring */}

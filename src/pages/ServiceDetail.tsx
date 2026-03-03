@@ -16,11 +16,25 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-function MetricCard({ label, value, unit, color, invertBar }: { label: string; value: number | string; unit: string; color: string; invertBar?: boolean }) {
+function MetricCard({ label, value, unit, color }: { label: string; value: number | string; unit: string; color: string; invertBar?: boolean }) {
   const numVal = typeof value === 'string' ? parseFloat(value) : value;
-  const barColor = invertBar
-    ? (numVal >= 80 ? 'bg-success' : numVal >= 60 ? 'bg-warning' : 'bg-destructive')
-    : (numVal >= 85 ? 'bg-destructive' : numVal >= 70 ? 'bg-warning' : 'bg-primary');
+
+  // Map text color to matching bar background color
+  const barColorMap: Record<string, string> = {
+    'text-primary': 'bg-primary',
+    'text-success': 'bg-success',
+    'text-warning': 'bg-warning',
+    'text-destructive': 'bg-destructive',
+    'text-foreground': 'bg-foreground/60',
+    'text-muted-foreground': 'bg-muted-foreground/50',
+    'text-emerald-400': 'bg-emerald-400',
+    'text-sky-400': 'bg-sky-400',
+    'text-violet-400': 'bg-violet-400',
+    'text-red-400': 'bg-red-400',
+    'text-amber-400': 'bg-amber-400',
+  };
+  const barColor = barColorMap[color] || 'bg-primary';
+
   return (
     <Card className="glass-card">
       <CardContent className="p-4 text-center">
@@ -2120,7 +2134,25 @@ const ServiceDetail = () => {
               </div>
               <div className="p-3 rounded-lg bg-secondary/50">
                 <span className="text-muted-foreground block mb-0.5">Intervalo</span>
-                <span className="text-foreground font-semibold">{service.check_interval_seconds}s</span>
+                <Select
+                  value={String(service.check_interval_seconds)}
+                  onValueChange={async (val) => {
+                    try {
+                      await updateService.mutateAsync({ id: service.id, check_interval_seconds: Number(val) } as any);
+                      toast.success(`Intervalo alterado para ${Number(val) >= 60 ? `${Number(val) / 60} min` : `${val}s`}`);
+                    } catch { toast.error('Erro ao alterar intervalo'); }
+                  }}
+                >
+                  <SelectTrigger className="h-8 mt-1 bg-secondary/80 border-border text-xs font-mono font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30 segundos</SelectItem>
+                    <SelectItem value="60">1 minuto</SelectItem>
+                    <SelectItem value="300">5 minutos</SelectItem>
+                    <SelectItem value="600">10 minutos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="p-3 rounded-lg bg-secondary/50">
                 <span className="text-muted-foreground block mb-0.5">Habilitado</span>

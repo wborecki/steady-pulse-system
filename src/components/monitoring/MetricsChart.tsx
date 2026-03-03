@@ -15,7 +15,7 @@ export function MetricsChart({ title, data, color, unit = '' }: MetricsChartProp
     return (
       <div>
         <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">{title}</h3>
-        <div className="h-40 flex items-center justify-center text-xs text-muted-foreground font-mono">
+        <div className="h-48 flex items-center justify-center text-xs text-muted-foreground font-mono">
           Sem dados disponíveis
         </div>
       </div>
@@ -25,7 +25,7 @@ export function MetricsChart({ title, data, color, unit = '' }: MetricsChartProp
   return (
     <div>
       <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">{title}</h3>
-      <div className="h-40">
+      <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
             <defs>
@@ -44,7 +44,10 @@ export function MetricsChart({ title, data, color, unit = '' }: MetricsChartProp
                 borderRadius: '8px',
                 fontSize: '12px',
                 fontFamily: 'JetBrains Mono',
+                color: 'hsl(210 20% 90%)',
               }}
+              labelStyle={{ color: 'hsl(210 20% 98%)' }}
+              itemStyle={{ color: 'hsl(210 20% 85%)' }}
               formatter={(val: number) => [`${val}${unit}`, title]}
             />
             <Area

@@ -315,6 +315,29 @@ export type Database = {
     Functions: {
       calculate_uptime: { Args: { p_service_id: string }; Returns: number }
       cleanup_old_health_checks: { Args: never; Returns: undefined }
+      get_dashboard_health_stats: {
+        Args: { p_hours?: number }
+        Returns: {
+          total_checks: number
+          online_checks: number
+          offline_checks: number
+          warning_checks: number
+          avg_response_time: number
+          sla_percentage: number
+          timeline: {
+            bucket: string
+            avg_response_time: number
+            total: number
+            available: number
+            incidents: number
+            availability_pct: number
+          }[]
+          incidents_by_category: {
+            category: string
+            incident_count: number
+          }[]
+        }
+      }
     }
     Enums: {
       alert_type: "critical" | "warning" | "info"

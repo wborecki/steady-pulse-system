@@ -28,11 +28,19 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
           <Shield className="h-5 w-5 text-primary" />
         </div>
         {!collapsed && (
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="font-heading font-bold text-sm text-foreground">MonitorHub</h1>
             <p className="text-[10px] font-mono text-muted-foreground">Sistema de Monitoramento</p>
           </div>
         )}
+        {/* Desktop collapse toggle in header */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="hidden md:flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors ml-auto"
+          title={collapsed ? 'Expandir' : 'Recolher'}
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
         {/* Mobile close */}
         <button onClick={() => setMobileOpen(false)} className="ml-auto md:hidden text-muted-foreground hover:text-foreground">
           <X className="h-5 w-5" />
@@ -60,27 +68,26 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-2 space-y-1">
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors ${collapsed ? 'justify-center' : ''}`}
-        >
-          {theme === 'dark' ? <Sun className="h-4 w-4 flex-shrink-0" /> : <Moon className="h-4 w-4 flex-shrink-0" />}
-          {!collapsed && <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>}
-        </button>
-        <button
-          onClick={signOut}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ${collapsed ? 'justify-center' : ''}`}
-        >
-          <LogOut className="h-4 w-4 flex-shrink-0" />
-          {!collapsed && <span>Sair</span>}
-        </button>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={`w-full flex items-center px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors hidden md:flex ${collapsed ? 'justify-center' : ''}`}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4" /><span className="text-xs">Colapsar</span></>}
-        </button>
+      <div className="border-t border-sidebar-border p-2">
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-1' : 'gap-1 justify-between'}`}>
+          {/* Theme toggle */}
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+            title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+
+          {/* Sign out */}
+          <button
+            onClick={signOut}
+            className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            title="Sair"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </>
   );
