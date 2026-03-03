@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3, LogOut, Menu, X, Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -16,6 +17,7 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const { signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   const sidebarContent = (
     <>
@@ -58,6 +60,13 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
 
       <div className="border-t border-sidebar-border p-2 space-y-1">
         <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors ${collapsed ? 'justify-center' : ''}`}
+        >
+          {theme === 'dark' ? <Sun className="h-4 w-4 flex-shrink-0" /> : <Moon className="h-4 w-4 flex-shrink-0" />}
+          {!collapsed && <span>{theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</span>}
+        </button>
+        <button
           onClick={signOut}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
@@ -68,7 +77,7 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
           onClick={() => setCollapsed(!collapsed)}
           className={`w-full flex items-center px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors hidden md:flex ${collapsed ? 'justify-center' : ''}`}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <><ChevronLeft className="h-4 w-4" /><span className="text-xs">Colapsar</span></>}
         </button>
       </div>
     </>
