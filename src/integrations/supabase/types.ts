@@ -143,6 +143,48 @@ export type Database = {
           },
         ]
       }
+      notification_settings: {
+        Row: {
+          alert_email: string | null
+          auto_refresh: boolean
+          check_interval_seconds: number
+          created_at: string
+          generic_webhook_url: string | null
+          id: string
+          notify_critical_only: boolean
+          slack_webhook_url: string | null
+          sound_alerts: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alert_email?: string | null
+          auto_refresh?: boolean
+          check_interval_seconds?: number
+          created_at?: string
+          generic_webhook_url?: string | null
+          id?: string
+          notify_critical_only?: boolean
+          slack_webhook_url?: string | null
+          sound_alerts?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alert_email?: string | null
+          auto_refresh?: boolean
+          check_interval_seconds?: number
+          created_at?: string
+          generic_webhook_url?: string | null
+          id?: string
+          notify_critical_only?: boolean
+          slack_webhook_url?: string | null
+          sound_alerts?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       services: {
         Row: {
           category: Database["public"]["Enums"]["service_category"]
@@ -215,6 +257,7 @@ export type Database = {
     }
     Functions: {
       calculate_uptime: { Args: { p_service_id: string }; Returns: number }
+      cleanup_old_health_checks: { Args: never; Returns: undefined }
     }
     Enums: {
       alert_type: "critical" | "warning" | "info"
