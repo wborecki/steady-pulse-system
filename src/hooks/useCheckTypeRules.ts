@@ -15,6 +15,7 @@ export function useCheckTypeRules() {
     queryKey: ['check-type-status-rules'],
     queryFn: async () => {
       const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from('check_type_status_rules' as any)
         .select('*')
         .order('check_type');
@@ -29,7 +30,9 @@ export function useUpdateCheckTypeRule() {
   return useMutation({
     mutationFn: async ({ id, warning_rules, offline_rules }: { id: string; warning_rules: Record<string, unknown>; offline_rules: Record<string, unknown> }) => {
       const { error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from('check_type_status_rules' as any)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update({ warning_rules, offline_rules } as any)
         .eq('id', id);
       if (error) throw error;

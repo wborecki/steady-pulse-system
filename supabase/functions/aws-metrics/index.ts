@@ -13,10 +13,10 @@ function hmac(key: Uint8Array, data: string): Promise<ArrayBuffer> {
 }
 
 async function getSignatureKey(key: string, dateStamp: string, region: string, service: string) {
-  let kDate = await hmac(new TextEncoder().encode("AWS4" + key), dateStamp);
-  let kRegion = await hmac(new Uint8Array(kDate), region);
-  let kService = await hmac(new Uint8Array(kRegion), service);
-  let kSigning = await hmac(new Uint8Array(kService), "aws4_request");
+  const kDate = await hmac(new TextEncoder().encode("AWS4" + key), dateStamp);
+  const kRegion = await hmac(new Uint8Array(kDate), region);
+  const kService = await hmac(new Uint8Array(kRegion), service);
+  const kSigning = await hmac(new Uint8Array(kService), "aws4_request");
   return new Uint8Array(kSigning);
 }
 
@@ -27,7 +27,7 @@ function toHex(buffer: ArrayBuffer): string {
 async function awsRequest(service: string, region: string, action: string, params: Record<string, string>, accessKey: string, secretKey: string) {
   const host = `${service}.${region}.amazonaws.com`;
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").slice(0, 15) + "Z";
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
   const dateStamp = amzDate.slice(0, 8);
 
   const queryParams = new URLSearchParams({ Action: action, Version: service === "monitoring" ? "2010-08-01" : "2006-03-01", ...params });

@@ -1,4 +1,4 @@
-project_id = "bcdvbnzcrxgdtqnhpbzw"
+project_id = "zzkwldfssxopclqsxtku"
 
 [functions.health-check]
 verify_jwt = false

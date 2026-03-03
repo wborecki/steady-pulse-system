@@ -58,6 +58,7 @@ Deno.serve(async (req) => {
 
     // Disk: use the root mount or the one with highest usage
     const disks = agentData.disks || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rootDisk = disks.find((d: any) => d.mount === "/") || disks[0];
     const diskPercent = rootDisk?.percent || 0;
 

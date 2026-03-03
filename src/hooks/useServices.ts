@@ -62,6 +62,7 @@ export function useCreateService() {
     mutationFn: async (service: Partial<DbService>) => {
       const { data, error } = await supabase
         .from('services')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .insert(service as any)
         .select()
         .single();
@@ -69,9 +70,9 @@ export function useCreateService() {
 
       // Create default thresholds based on check type
       if (data?.id) {
-        const ct = (service as any).check_type || 'http';
+        const ct = (service as Record<string, unknown>).check_type as string || 'http';
         const infraTypes = ['systemctl', 'container', 'cloudwatch', 'sql_query', 'mongodb'];
-        const defaults: any[] = [];
+        const defaults: Record<string, unknown>[] = [];
 
         // All types get response_time threshold
         defaults.push({ service_id: data.id, metric: 'response_time', operator: 'gt', threshold: 5000, severity: 'warning' });
@@ -107,6 +108,7 @@ export function useUpdateService() {
     mutationFn: async ({ id, ...updates }: Partial<DbService> & { id: string }) => {
       const { data, error } = await supabase
         .from('services')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update(updates as any)
         .eq('id', id)
         .select()

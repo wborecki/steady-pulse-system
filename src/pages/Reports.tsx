@@ -4,6 +4,7 @@ import { useHealthChecksForPeriod } from '@/hooks/useHealthChecks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
+import { type ServiceStatus } from '@/data/mockData';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -273,7 +274,7 @@ const Reports = () => {
                       <tr key={s.id} className="border-b border-border/50 cursor-pointer hover:bg-secondary/50" onClick={() => navigate(`/service/${s.id}`)}>
                         <td className="px-3 py-2.5 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0">
-                            <StatusIndicator status={s.status as any} size="sm" />
+                            <StatusIndicator status={s.status as ServiceStatus} size="sm" />
                             <span className="truncate block">{s.name}</span>
                           </div>
                         </td>
@@ -310,7 +311,7 @@ const Reports = () => {
                       <span className={`text-xs font-mono w-6 text-right shrink-0 ${i < 3 && uptimeRanking.length > 3 ? 'text-destructive font-bold' : 'text-muted-foreground'}`}>
                         #{uptimeRanking.length - i}
                       </span>
-                      <StatusIndicator status={s.status as any} size="sm" />
+                      <StatusIndicator status={s.status as ServiceStatus} size="sm" />
                       <span className="text-xs font-mono flex-1 truncate min-w-0">{s.name}</span>
                       <div className="w-16 h-2 bg-secondary rounded-full overflow-hidden shrink-0">
                         <div

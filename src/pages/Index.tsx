@@ -5,6 +5,7 @@ import { useTriggerHealthCheck, useAllRecentHealthChecks } from '@/hooks/useHeal
 import { StatsCard } from '@/components/monitoring/StatsCard';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
+import { type ServiceStatus } from '@/data/mockData';
 import { Activity, CheckCircle, AlertTriangle, XCircle, Clock, RefreshCw, TrendingUp, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -178,7 +179,7 @@ const Index = () => {
                   className="flex items-center justify-between p-2.5 rounded-lg bg-card/60 border border-border cursor-pointer hover:border-destructive/40 transition-all"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <StatusIndicator status={s.status as any} size="sm" />
+                    <StatusIndicator status={s.status as ServiceStatus} size="sm" />
                     <span className="font-mono text-xs truncate">{s.name}</span>
                   </div>
                   <span className="text-[10px] font-mono text-muted-foreground">

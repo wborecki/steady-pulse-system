@@ -22,7 +22,7 @@ export default function Login() {
     try {
       await signIn(email, password);
       navigate('/', { replace: true });
-    } catch (error: any) {
+    } catch {
       toast({
         title: 'Erro ao entrar',
         description: 'Email ou senha incorretos.',

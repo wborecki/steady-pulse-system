@@ -56,6 +56,7 @@ export function useFilteredHealthChecks(
         .range(page * perPage, (page + 1) * perPage - 1);
 
       if (statusFilter && statusFilter !== 'all') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         query = query.eq('status', statusFilter as any);
       }
 

@@ -38,6 +38,7 @@ export function useUpsertThreshold() {
       // Use upsert on unique constraint
       const { data, error } = await supabase
         .from('alert_thresholds')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .upsert(t as any, { onConflict: 'service_id,metric,operator' })
         .select()
         .single();

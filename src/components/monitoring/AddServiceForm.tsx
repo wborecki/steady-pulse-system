@@ -249,9 +249,11 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
 
     try {
       if (mode === 'edit' && initialData?.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await updateService.mutateAsync({ id: initialData.id, ...serviceData } as any);
         toast.success('Serviço atualizado!');
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await createService.mutateAsync(serviceData as any);
         toast.success('Serviço adicionado!');
       }
@@ -924,7 +926,7 @@ function DiscoverButton({ agentUrl, token, type, onDiscovered }: {
           toast.info('Nenhum serviço systemd encontrado no agente');
         } else {
           toast.success(`${services.length} serviços encontrados!`);
-          onDiscovered(services.map((s: any) => ({ name: s.name, description: s.description })));
+          onDiscovered(services.map((s: Record<string, string>) => ({ name: s.name, description: s.description })));
         }
       } else {
         const containers = data?.containers || [];
@@ -932,11 +934,11 @@ function DiscoverButton({ agentUrl, token, type, onDiscovered }: {
           toast.info('Nenhum container encontrado no agente');
         } else {
           toast.success(`${containers.length} containers encontrados!`);
-          onDiscovered(containers.map((c: any) => ({ name: c.name, description: `${c.image} (${c.state})` })));
+          onDiscovered(containers.map((c: Record<string, string>) => ({ name: c.name, description: `${c.image} (${c.state})` })));
         }
       }
-    } catch (err: any) {
-      toast.error(`Erro ao descobrir serviços: ${err.message}`);
+    } catch (err: unknown) {
+      toast.error(`Erro ao descobrir serviços: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }

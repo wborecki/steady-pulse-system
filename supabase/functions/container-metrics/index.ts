@@ -6,6 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string, retries = 1): Promise<any> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -57,14 +58,19 @@ Deno.serve(async (req) => {
     const responseTime = Date.now() - start;
 
     const containers = agentData.containers || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const running = containers.filter((c: any) => c.state === "running").length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const stopped = containers.filter((c: any) => c.state === "exited" || c.state === "stopped").length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const unhealthy = containers.filter((c: any) => c.health === "unhealthy").length;
 
     const avgCpu = containers.length > 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? containers.reduce((sum: number, c: any) => sum + (c.cpu_percent || 0), 0) / containers.length
       : 0;
     const avgMem = containers.length > 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? containers.reduce((sum: number, c: any) => sum + (c.memory_percent || 0), 0) / containers.length
       : 0;
 
@@ -78,6 +84,7 @@ Deno.serve(async (req) => {
     else if (wr.stopped_gt !== undefined && stopped > wr.stopped_gt) status = "warning";
 
     const containerDetails: Record<string, unknown> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       containers: containers.map((c: any) => ({
         name: c.name,
         image: c.image,
@@ -114,6 +121,7 @@ Deno.serve(async (req) => {
       const existingConfig = { ...config };
       existingConfig._container_details = containerDetails;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const diskVal = serverMetrics?.disks?.find((d: any) => d.mount === "/")?.percent ?? serverMetrics?.disks?.[0]?.percent ?? 0;
 
       await supabase.from("health_checks").insert({

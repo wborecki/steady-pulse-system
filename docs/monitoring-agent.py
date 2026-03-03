@@ -16,7 +16,7 @@ Endpoints:
     GET  /health      — agent health check
 
 Install as systemd service:
-    curl -fsSL https://raw.githubusercontent.com/SEU_REPO/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
+    curl -fsSL https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
 """
 
 import argparse

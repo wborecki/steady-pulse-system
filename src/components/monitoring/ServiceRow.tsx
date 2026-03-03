@@ -1,4 +1,5 @@
 import { StatusIndicator } from './StatusIndicator';
+import { type ServiceStatus } from '@/data/mockData';
 import { Card } from '@/components/ui/card';
 import { Cloud, Database, Wind, Server, Cog, Globe, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react';
 
@@ -137,7 +138,7 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-heading font-semibold text-sm truncate">{service.name}</h3>
-            <StatusIndicator status={service.status as any} size="sm" />
+            <StatusIndicator status={service.status as ServiceStatus} size="sm" />
           </div>
           <p className="text-xs text-muted-foreground font-mono">
             {categoryLabels[service.category] || service.category}

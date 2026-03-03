@@ -190,6 +190,7 @@ Deno.serve(async (req) => {
 
     // Filter services respecting their individual check_interval_seconds
     const now = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eligibleServices = (services || []).filter((s: any) => {
       if (serviceId) return true;
       if (!s.last_check) return true;

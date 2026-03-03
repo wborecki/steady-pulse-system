@@ -6,6 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAgentEndpoint(agentUrl: string, endpoint: string, token: string, method = "GET", body?: string, retries = 1): Promise<any> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -61,8 +62,11 @@ Deno.serve(async (req) => {
     const responseTime = Date.now() - start;
 
     const units = agentData.units || agentData.services || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const activeCount = units.filter((u: any) => u.active_state === "active").length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const failedCount = units.filter((u: any) => u.active_state === "failed").length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inactiveCount = units.filter((u: any) => u.active_state === "inactive").length;
 
     // Fetch configurable rules
@@ -75,6 +79,7 @@ Deno.serve(async (req) => {
     else if (inactiveCount > (wr.inactive_gt ?? 0)) status = "warning";
 
     const systemctlDetails: Record<string, unknown> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       units: units.map((u: any) => ({
         name: u.name || u.unit,
         active_state: u.active_state,
@@ -105,6 +110,7 @@ Deno.serve(async (req) => {
 
       const cpuVal = serverMetrics?.cpu_percent ?? activeCount;
       const memVal = serverMetrics?.memory?.percent ?? failedCount;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const diskVal = serverMetrics?.disks?.find((d: any) => d.mount === "/")?.percent ?? serverMetrics?.disks?.[0]?.percent ?? inactiveCount;
 
       await supabase.from("health_checks").insert({

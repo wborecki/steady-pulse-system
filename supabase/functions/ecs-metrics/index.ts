@@ -12,10 +12,10 @@ function hmac(key: Uint8Array, data: string): Promise<ArrayBuffer> {
 }
 
 async function getSignatureKey(key: string, dateStamp: string, region: string, service: string) {
-  let kDate = await hmac(new TextEncoder().encode("AWS4" + key), dateStamp);
-  let kRegion = await hmac(new Uint8Array(kDate), region);
-  let kService = await hmac(new Uint8Array(kRegion), service);
-  let kSigning = await hmac(new Uint8Array(kService), "aws4_request");
+  const kDate = await hmac(new TextEncoder().encode("AWS4" + key), dateStamp);
+  const kRegion = await hmac(new Uint8Array(kDate), region);
+  const kService = await hmac(new Uint8Array(kRegion), service);
+  const kSigning = await hmac(new Uint8Array(kService), "aws4_request");
   return new Uint8Array(kSigning);
 }
 
@@ -27,7 +27,7 @@ function toHex(buffer: ArrayBuffer): string {
 async function ecsRequest(region: string, target: string, payload: Record<string, unknown>, accessKey: string, secretKey: string) {
   const host = `ecs.${region}.amazonaws.com`;
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").slice(0, 15) + "Z";
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
   const dateStamp = amzDate.slice(0, 8);
   const body = JSON.stringify(payload);
   const payloadHash = toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)));
@@ -56,7 +56,7 @@ async function ecsRequest(region: string, target: string, payload: Record<string
 async function cwRequest(region: string, action: string, params: Record<string, string>, accessKey: string, secretKey: string) {
   const host = `monitoring.${region}.amazonaws.com`;
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, "").slice(0, 15) + "Z";
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
   const dateStamp = amzDate.slice(0, 8);
   const queryParams = new URLSearchParams({ Action: action, Version: "2010-08-01", ...params });
   const canonicalQuerystring = [...queryParams].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
@@ -112,6 +112,7 @@ Deno.serve(async (req) => {
     const runningCount = svcInfo.runningCount ?? 0;
     const desiredCount = svcInfo.desiredCount ?? 0;
     const pendingCount = svcInfo.pendingCount ?? 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const deployments = (svcInfo.deployments || []).map((d: any) => ({
       id: d.id,
       status: d.status,

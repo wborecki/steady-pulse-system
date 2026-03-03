@@ -38,6 +38,7 @@ function isTokenValid(config: AirflowConfig): boolean {
   return new Date(config._token_expires_at) > new Date();
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 async function getAuthHeader(config: AirflowConfig, supabase: any, serviceId: string | null): Promise<string> {
   const baseUrl = config.base_url.replace(/\/$/, "");
 

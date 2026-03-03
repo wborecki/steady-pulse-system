@@ -43,6 +43,7 @@ export function useSaveNotificationSettings() {
       const payload = { ...settings, user_id: user.id };
       const { data, error } = await supabase
         .from('notification_settings')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .upsert(payload as any, { onConflict: 'user_id' })
         .select()
         .single();

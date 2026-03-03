@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useService, useDeleteService, useUpdateService } from '@/hooks/useServices';
 import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
+import { type ServiceStatus } from '@/data/mockData';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
@@ -32,7 +33,24 @@ function MetricCard({ label, value, unit, color }: { label: string; value: numbe
   );
 }
 
-function ServerMetricsPanel({ server }: { server: any }) {
+interface DiskInfo {
+  mount: string;
+  total_gb?: number;
+  used_gb?: number;
+  available_gb?: number;
+  percent?: number;
+}
+
+interface ServerInfo {
+  hostname?: string;
+  cpu_percent?: number;
+  cpu_cores?: number;
+  memory?: { total_mb?: number; used_mb?: number; available_mb?: number; percent?: number };
+  disks?: DiskInfo[];
+  load_average?: { load_1?: number; load_5?: number; load_15?: number };
+}
+
+function ServerMetricsPanel({ server }: { server: ServerInfo }) {
   const mem = server.memory || {};
   const load = server.load_average || {};
   const disks = server.disks || [];
@@ -83,7 +101,7 @@ function ServerMetricsPanel({ server }: { server: any }) {
               <HardDrive className="h-3 w-3 inline mr-1" />Disco /
             </p>
             {(() => {
-              const rootDisk = disks.find((d: any) => d.mount === '/') || disks[0];
+              const rootDisk = disks.find((d: DiskInfo) => d.mount === '/') || disks[0];
               if (!rootDisk) return <p className="text-2xl font-heading font-bold text-muted-foreground">N/A</p>;
               return (
                 <>
@@ -117,7 +135,7 @@ function ServerMetricsPanel({ server }: { server: any }) {
                 </tr>
               </thead>
               <tbody>
-                {disks.map((d: any, i: number) => (
+                {disks.map((d: DiskInfo, i: number) => (
                   <tr key={i} className="border-b border-border/50">
                     <td className="p-2 text-xs">{d.mount}</td>
                     <td className="p-2 text-right text-xs">{d.total_gb?.toFixed(1)} GB</td>
@@ -308,6 +326,7 @@ const ServiceDetail = () => {
     if (!service) return;
     const newStatus = service.status === 'maintenance' ? 'online' : 'maintenance';
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await updateService.mutateAsync({ id: service.id, status: newStatus } as any);
       toast.success(newStatus === 'maintenance' ? 'Serviço em manutenção — alertas pausados' : 'Modo manutenção desativado');
     } catch {
@@ -348,7 +367,7 @@ const ServiceDetail = () => {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-heading font-bold truncate">{service.name}</h1>
-            <StatusIndicator status={service.status as any} size="lg" showLabel />
+            <StatusIndicator status={service.status as ServiceStatus} size="lg" showLabel />
             <span className="text-xs font-mono text-muted-foreground bg-secondary px-2 py-0.5 rounded">
               {checkTypeLabels[checkType] || checkType}
             </span>
@@ -443,7 +462,7 @@ const ServiceDetail = () => {
             <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-primary" />
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-success" />
             <MetricCard label="Storage" value={Number(service.disk)} unit="%" color="text-warning" />
-            <MetricCard label="Conexões Ativas" value={(config._sql_details as any)?.active_connections ?? 0} unit="" color="text-foreground" />
+            <MetricCard label="Conexões Ativas" value={(config._sql_details as Record<string, unknown>)?.active_connections as number ?? 0} unit="" color="text-foreground" />
           </>
         ) : checkType === 'postgresql' ? (
           <>
@@ -457,7 +476,7 @@ const ServiceDetail = () => {
             <MetricCard label="Conexões %" value={Number(service.cpu)} unit="%" color="text-primary" />
             <MetricCard label="Memória %" value={Number(service.memory)} unit="%" color="text-success" />
             <MetricCard label="Disco %" value={Number(service.disk)} unit="%" color="text-warning" />
-            <MetricCard label="Ops Ativas" value={(config._mongo_details as any)?.active_operations ?? 0} unit="" color="text-foreground" />
+            <MetricCard label="Ops Ativas" value={(config._mongo_details as Record<string, unknown>)?.active_operations as number ?? 0} unit="" color="text-foreground" />
           </>
         ) : isHttpType(checkType) ? (
           <>
@@ -539,6 +558,7 @@ const ServiceDetail = () => {
         )}
       </div>
 
+      {/* eslint-disable @typescript-eslint/no-explicit-any -- dynamic config sections */}
       {/* SSL Certificate Info */}
       {isHttpType(checkType) && (() => {
         const sslInfo = (config as any)?._ssl_info;
@@ -1343,7 +1363,7 @@ const ServiceDetail = () => {
           </div>
         );
       })()}
-
+      {/* eslint-enable @typescript-eslint/no-explicit-any */}
 
       {isHttpType(checkType) && history.length > 0 && (
         <Card className="glass-card">
@@ -1511,7 +1531,7 @@ const ServiceDetail = () => {
                 return (
                   <tr key={h.id} className={`border-b border-border/50 ${isError ? 'bg-destructive/5' : ''}`}>
                     <td className="p-3 text-xs">{new Date(h.checked_at).toLocaleString('pt-BR')}</td>
-                    <td className="p-3"><StatusIndicator status={h.status as any} size="sm" showLabel /></td>
+                    <td className="p-3"><StatusIndicator status={h.status as ServiceStatus} size="sm" showLabel /></td>
                     <td className="p-3">{h.response_time}ms</td>
                     {isHttpType(checkType) && <td className="p-3">{h.status_code || '-'}</td>}
                     {(isInfraType(checkType) || isDbType(checkType)) && <>
