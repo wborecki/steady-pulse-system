@@ -206,6 +206,9 @@ Deno.serve(async (req) => {
     const results = [];
 
     for (const service of eligibleServices as Service[]) {
+      // Immediately stamp last_check to prevent concurrent duplicate runs
+      await supabase.from("services").update({ last_check: new Date().toISOString() }).eq("id", service.id);
+
       let checkResult: {
         status: string;
         response_time: number;
