@@ -174,6 +174,24 @@ function isAirflowType(checkType: string) {
   return checkType === 'airflow';
 }
 
+// Map of which resource metrics each check_type actually collects
+const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: boolean }> = {
+  http:              { cpu: false, memory: false, disk: false },
+  tcp:               { cpu: false, memory: false, disk: false },
+  process:           { cpu: false, memory: false, disk: false },
+  s3:                { cpu: false, memory: false, disk: false },
+  sql_query:         { cpu: true,  memory: true,  disk: true  },
+  postgresql:        { cpu: true,  memory: true,  disk: false },
+  mongodb:           { cpu: true,  memory: true,  disk: true  },
+  cloudwatch:        { cpu: true,  memory: true,  disk: true  },
+  airflow:           { cpu: true,  memory: true,  disk: false },
+  lambda:            { cpu: true,  memory: true,  disk: true  }, // error_rate, duration, throttles mapped to cpu/mem/disk
+  ecs:               { cpu: true,  memory: true,  disk: false },
+  cloudwatch_alarms: { cpu: true,  memory: true,  disk: true  }, // alarm/ok/insufficient mapped to cpu/mem/disk
+  systemctl:         { cpu: true,  memory: true,  disk: true  },
+  container:         { cpu: true,  memory: true,  disk: true  },
+};
+
 const ServiceDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1367,51 +1385,59 @@ const ServiceDetail = () => {
       </div>
 
       {/* Resource History Charts */}
-      {(isInfraType(checkType) || isAirflowType(checkType) || isAgentType(checkType) || checkType === 'lambda' || checkType === 'ecs' || checkType === 'cloudwatch_alarms' || cpuHistory.length > 0) && (
-        <div className={`grid grid-cols-1 gap-4 ${isAirflowType(checkType) || checkType === 'cloudwatch_alarms' ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
-          {cpuHistory.length > 0 && (
-            <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={
-                isAirflowType(checkType) ? "Pool Utilization (%)" :
-                checkType === 'postgresql' ? "Conexões (%)" :
-                checkType === 'mongodb' ? "Conexões (%)" :
-                checkType === 'systemctl' ? "CPU Servidor (%)" :
-                checkType === 'container' ? "CPU Containers (%)" :
-                checkType === 'lambda' ? "Error Rate (%)" :
-                checkType === 'cloudwatch_alarms' ? "Alarmes Ativos" :
-                checkType === 'ecs' ? "CPU ECS (%)" :
-                "CPU (%)"
-              } data={cpuHistory} color={checkType === 'lambda' || checkType === 'cloudwatch_alarms' ? "hsl(0, 80%, 55%)" : "hsl(175, 80%, 50%)"} unit={checkType === 'cloudwatch_alarms' ? "" : "%"} />
-            </div>
-          )}
-          {memHistory.length > 0 && (
-            <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={
-                isAirflowType(checkType) ? "DAG Success Rate (%)" :
-                checkType === 'postgresql' ? "Cache Hit Ratio (%)" :
-                checkType === 'mongodb' ? "Memória (%)" :
-                checkType === 'systemctl' ? "RAM Servidor (%)" :
-                checkType === 'container' ? "Memória Containers (%)" :
-                checkType === 'lambda' ? "Duration Avg (ms)" :
-                checkType === 'cloudwatch_alarms' ? "Alarmes OK" :
-                checkType === 'ecs' ? "Memória ECS (%)" :
-                "Memória (%)"
-              } data={memHistory} color="hsl(145, 65%, 45%)" unit={checkType === 'lambda' ? "ms" : checkType === 'cloudwatch_alarms' ? "" : "%"} />
-            </div>
-          )}
-          {diskHistory.length > 0 && !isAirflowType(checkType) && checkType !== 'cloudwatch_alarms' && (
-            <div className="glass-card rounded-lg p-4">
-              <MetricsChart title={
-                checkType === 'sql_query' ? "Storage (%)" :
-                isAgentType(checkType) ? "Disco Servidor (%)" :
-                checkType === 'lambda' ? "Throttles" :
-                checkType === 'ecs' ? "Disco (%)" :
-                "Disco (%)"
-              } data={diskHistory} color="hsl(38, 92%, 55%)" unit={checkType === 'lambda' ? "" : "%"} />
-            </div>
-          )}
-        </div>
-      )}
+      {(() => {
+        const metrics = collectsMetric[checkType] || { cpu: false, memory: false, disk: false };
+        const showCpu = metrics.cpu && cpuHistory.length > 0;
+        const showMem = metrics.memory && memHistory.length > 0;
+        const showDisk = metrics.disk && diskHistory.length > 0;
+        const chartCount = [showCpu, showMem, showDisk].filter(Boolean).length;
+        if (chartCount === 0) return null;
+        return (
+          <div className={`grid grid-cols-1 gap-4 ${chartCount === 2 ? 'lg:grid-cols-2' : chartCount >= 3 ? 'lg:grid-cols-3' : ''}`}>
+            {showCpu && (
+              <div className="glass-card rounded-lg p-4">
+                <MetricsChart title={
+                  isAirflowType(checkType) ? "Pool Utilization (%)" :
+                  checkType === 'postgresql' ? "Conexões (%)" :
+                  checkType === 'mongodb' ? "Conexões (%)" :
+                  checkType === 'systemctl' ? "CPU Servidor (%)" :
+                  checkType === 'container' ? "CPU Containers (%)" :
+                  checkType === 'lambda' ? "Error Rate (%)" :
+                  checkType === 'cloudwatch_alarms' ? "Alarmes Ativos" :
+                  checkType === 'ecs' ? "CPU ECS (%)" :
+                  "CPU (%)"
+                } data={cpuHistory} color={checkType === 'lambda' || checkType === 'cloudwatch_alarms' ? "hsl(0, 80%, 55%)" : "hsl(175, 80%, 50%)"} unit={checkType === 'cloudwatch_alarms' ? "" : "%"} />
+              </div>
+            )}
+            {showMem && (
+              <div className="glass-card rounded-lg p-4">
+                <MetricsChart title={
+                  isAirflowType(checkType) ? "DAG Success Rate (%)" :
+                  checkType === 'postgresql' ? "Cache Hit Ratio (%)" :
+                  checkType === 'mongodb' ? "Memória (%)" :
+                  checkType === 'systemctl' ? "RAM Servidor (%)" :
+                  checkType === 'container' ? "Memória Containers (%)" :
+                  checkType === 'lambda' ? "Duration Avg (ms)" :
+                  checkType === 'cloudwatch_alarms' ? "Alarmes OK" :
+                  checkType === 'ecs' ? "Memória ECS (%)" :
+                  "Memória (%)"
+                } data={memHistory} color="hsl(145, 65%, 45%)" unit={checkType === 'lambda' ? "ms" : checkType === 'cloudwatch_alarms' ? "" : "%"} />
+              </div>
+            )}
+            {showDisk && (
+              <div className="glass-card rounded-lg p-4">
+                <MetricsChart title={
+                  checkType === 'sql_query' ? "Storage (%)" :
+                  isAgentType(checkType) ? "Disco Servidor (%)" :
+                  checkType === 'lambda' ? "Throttles" :
+                  checkType === 'mongodb' ? "Storage (%)" :
+                  "Disco (%)"
+                } data={diskHistory} color="hsl(38, 92%, 55%)" unit={checkType === 'lambda' ? "" : "%"} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Health Check History with Filters & Pagination */}
       <div className="space-y-3">
