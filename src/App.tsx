@@ -13,6 +13,8 @@ import ServiceDetail from "./pages/ServiceDetail";
 import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
+import Documentation from "./pages/Documentation";
+import Connections from "./pages/Connections";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +47,8 @@ const App = () => (
                         <Route path="/alerts" element={<Alerts />} />
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/connections" element={<Connections />} />
+                        <Route path="/docs" element={<Documentation />} />
                         <Route path="*" element={<NotFound />} />
                       </Routes>
                     </AppSidebar>

@@ -123,6 +123,36 @@ export type Database = {
         }
         Relationships: []
       }
+      credentials: {
+        Row: {
+          id: string
+          name: string
+          credential_type: string
+          config: Json
+          description: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          credential_type: string
+          config?: Json
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          credential_type?: string
+          config?: Json
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       health_checks: {
         Row: {
           checked_at: string

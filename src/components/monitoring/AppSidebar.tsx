@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3, LogOut, Menu, X, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shield, BarChart3, LogOut, Menu, X, Sun, Moon, Book, KeyRound } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from 'next-themes';
 
@@ -10,6 +10,8 @@ const navItems = [
   { path: '/reports', label: 'Relatórios', icon: BarChart3 },
   { path: '/alerts', label: 'Alertas', icon: Bell },
   { path: '/settings', label: 'Configurações', icon: Settings },
+  { path: '/connections', label: 'Conexões', icon: KeyRound },
+  { path: '/docs', label: 'Documentação', icon: Book },
 ];
 
 export function AppSidebar({ children }: { children: React.ReactNode }) {

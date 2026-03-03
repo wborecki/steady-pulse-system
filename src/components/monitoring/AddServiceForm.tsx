@@ -10,6 +10,8 @@ import { useCreateService, useUpdateService } from '@/hooks/useServices';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Minus, Plus, Search, Loader2 } from 'lucide-react';
+import { CredentialSelector } from './CredentialSelector';
+import type { Credential } from '@/hooks/useCredentials';
 
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
@@ -588,38 +590,63 @@ function DbInputModeToggle({ dbInputMode, setDbInputMode }: { dbInputMode: strin
 }
 
 function PostgresFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
+  const [pgConnStr, setPgConnStr] = useState('');
+  const [pgHost, setPgHost] = useState('');
+  const [pgPort, setPgPort] = useState('5432');
+  const [pgDb, setPgDb] = useState('');
+  const [pgUser, setPgUser] = useState('');
+  const [pgPass, setPgPass] = useState('');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      if (c.connection_string) {
+        setDbInputMode('connection_string');
+        setPgConnStr(c.connection_string);
+      } else {
+        setDbInputMode('fields');
+        setPgHost(c.host || '');
+        setPgPort(c.port || '5432');
+        setPgDb(c.database || '');
+        setPgUser(c.username || '');
+        setPgPass(c.password || '');
+      }
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="postgresql" onSelect={handleCredential} />
       <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
       {dbInputMode === 'connection_string' ? (
         <div className="space-y-2">
           <Label>Connection String</Label>
-          <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" />
+          <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" value={pgConnStr} onChange={e => setPgConnStr(e.target.value)} />
         </div>
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-2">
               <Label>Host</Label>
-              <Input name="db_host" required placeholder="db.empresa.com" className="bg-secondary border-border" />
+              <Input name="db_host" required placeholder="db.empresa.com" className="bg-secondary border-border" value={pgHost} onChange={e => setPgHost(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Porta</Label>
-              <Input name="db_port" type="number" defaultValue="5432" className="bg-secondary border-border" />
+              <Input name="db_port" type="number" className="bg-secondary border-border" value={pgPort} onChange={e => setPgPort(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Database</Label>
-            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" />
+            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={pgDb} onChange={e => setPgDb(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" />
+              <Input name="db_username" required className="bg-secondary border-border" value={pgUser} onChange={e => setPgUser(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" />
+              <Input name="db_password" type="password" required className="bg-secondary border-border" value={pgPass} onChange={e => setPgPass(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
@@ -642,18 +669,43 @@ function PostgresFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; 
 }
 
 function MongoFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
+  const [mongoConnStr, setMongoConnStr] = useState('');
+  const [mongoHost, setMongoHost] = useState('');
+  const [mongoPort, setMongoPort] = useState('27017');
+  const [mongoDb, setMongoDb] = useState('');
+  const [mongoUser, setMongoUser] = useState('');
+  const [mongoPass, setMongoPass] = useState('');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      if (c.connection_string) {
+        setDbInputMode('connection_string');
+        setMongoConnStr(c.connection_string);
+      } else {
+        setDbInputMode('fields');
+        setMongoHost(c.host || '');
+        setMongoPort(c.port || '27017');
+        setMongoDb(c.database || '');
+        setMongoUser(c.username || '');
+        setMongoPass(c.password || '');
+      }
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="mongodb" onSelect={handleCredential} />
       <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
       {dbInputMode === 'connection_string' ? (
         <div className="space-y-3">
           <div className="space-y-2">
             <Label>Connection String</Label>
-            <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" />
+            <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" value={mongoConnStr} onChange={e => setMongoConnStr(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>Database (opcional)</Label>
-            <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" />
+            <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
           </div>
         </div>
       ) : (
@@ -661,25 +713,25 @@ function MongoFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; set
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-2">
               <Label>Host</Label>
-              <Input name="db_host" required placeholder="cluster.mongodb.net" className="bg-secondary border-border" />
+              <Input name="db_host" required placeholder="cluster.mongodb.net" className="bg-secondary border-border" value={mongoHost} onChange={e => setMongoHost(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Porta</Label>
-              <Input name="db_port" type="number" defaultValue="27017" className="bg-secondary border-border" />
+              <Input name="db_port" type="number" className="bg-secondary border-border" value={mongoPort} onChange={e => setMongoPort(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Database</Label>
-            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" />
+            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" />
+              <Input name="db_username" required className="bg-secondary border-border" value={mongoUser} onChange={e => setMongoUser(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" />
+              <Input name="db_password" type="password" required className="bg-secondary border-border" value={mongoPass} onChange={e => setMongoPass(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
@@ -744,34 +796,57 @@ function S3Fields() {
 }
 
 function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void }) {
+  const [mssqlConnStr, setMssqlConnStr] = useState('');
+  const [mssqlHost, setMssqlHost] = useState('');
+  const [mssqlDb, setMssqlDb] = useState('');
+  const [mssqlUser, setMssqlUser] = useState('');
+  const [mssqlPass, setMssqlPass] = useState('');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      if (c.connection_string) {
+        setDbInputMode('connection_string');
+        setMssqlConnStr(c.connection_string);
+      } else {
+        setDbInputMode('fields');
+        setMssqlHost(c.host || '');
+        setMssqlDb(c.database || '');
+        setMssqlUser(c.username || '');
+        setMssqlPass(c.password || '');
+      }
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="sql_query" onSelect={handleCredential} />
       <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
       {dbInputMode === 'connection_string' ? (
         <div className="space-y-2">
           <Label>Connection String</Label>
-          <Input name="mssql_connection_string" required placeholder="Server=host;Database=db;User Id=user;Password=pass;" className="bg-secondary border-border font-mono text-xs" />
+          <Input name="mssql_connection_string" required placeholder="Server=host;Database=db;User Id=user;Password=pass;" className="bg-secondary border-border font-mono text-xs" value={mssqlConnStr} onChange={e => setMssqlConnStr(e.target.value)} />
         </div>
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Host / Server</Label>
-              <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" />
+              <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" value={mssqlHost} onChange={e => setMssqlHost(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Database</Label>
-              <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" />
+              <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mssqlDb} onChange={e => setMssqlDb(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" />
+              <Input name="db_username" required className="bg-secondary border-border" value={mssqlUser} onChange={e => setMssqlUser(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" />
+              <Input name="db_password" type="password" required className="bg-secondary border-border" value={mssqlPass} onChange={e => setMssqlPass(e.target.value)} />
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -787,8 +862,23 @@ function SqlServerFields({ dbInputMode, setDbInputMode }: { dbInputMode: string;
 
 function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
   const [authType, setAuthType] = useState((initialConfig?.auth_type as string) || 'jwt');
+  const [airflowUrl, setAirflowUrl] = useState((initialConfig?.base_url as string) || '');
+  const [airflowUser, setAirflowUser] = useState((initialConfig?.username as string) || '');
+  const [airflowPass, setAirflowPass] = useState((initialConfig?.password as string) || '');
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setAirflowUrl(c.base_url || '');
+      setAirflowUser(c.username || '');
+      setAirflowPass(c.password || '');
+      if (c.auth_type) setAuthType(c.auth_type);
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="airflow" onSelect={handleCredential} />
       <div className="space-y-2">
         <Label>Versão / Autenticação</Label>
         <Select name="airflow_auth_type" defaultValue={authType} onValueChange={setAuthType}>
@@ -801,16 +891,16 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
       </div>
       <div className="space-y-2">
         <Label>URL do Airflow</Label>
-        <Input name="airflow_url" required defaultValue={(initialConfig?.base_url as string) || ''} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
+        <Input name="airflow_url" required value={airflowUrl} onChange={e => setAirflowUrl(e.target.value)} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Usuário</Label>
-          <Input name="airflow_username" required defaultValue={(initialConfig?.username as string) || ''} placeholder="admin" className="bg-secondary border-border" />
+          <Input name="airflow_username" required value={airflowUser} onChange={e => setAirflowUser(e.target.value)} placeholder="admin" className="bg-secondary border-border" />
         </div>
         <div className="space-y-2">
           <Label>Senha</Label>
-          <Input name="airflow_password" type="password" required defaultValue={(initialConfig?.password as string) || ''} placeholder="••••••••" className="bg-secondary border-border" />
+          <Input name="airflow_password" type="password" required value={airflowPass} onChange={e => setAirflowPass(e.target.value)} placeholder="••••••••" className="bg-secondary border-border" />
         </div>
       </div>
       {authType === 'jwt' ? (
@@ -991,6 +1081,14 @@ function SystemctlFields() {
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setAgentUrl(c.agent_url || '');
+      setAgentToken(c.token || '');
+    }
+  };
+
   const toggleItem = (name: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -1004,6 +1102,7 @@ function SystemctlFields() {
 
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="systemctl" onSelect={handleCredential} />
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
         <p className="text-xs text-foreground">
           🔗 <strong>Agente Unificado</strong> — A mesma URL monitora serviços systemd, containers Docker e métricas do servidor automaticamente.
@@ -1043,8 +1142,17 @@ function ContainerFields() {
   const [agentToken, setAgentToken] = useState('');
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
 
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setAgentUrl(c.agent_url || '');
+      setAgentToken(c.token || '');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="container" onSelect={handleCredential} />
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
         <p className="text-xs text-foreground">
           🔗 <strong>Agente Unificado</strong> — Containers são descobertos automaticamente.
@@ -1083,8 +1191,17 @@ function ServerFields() {
   const [agentUrl, setAgentUrl] = useState('');
   const [agentToken, setAgentToken] = useState('');
 
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      setAgentUrl(c.agent_url || '');
+      setAgentToken(c.token || '');
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <CredentialSelector checkType="server" onSelect={handleCredential} />
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
         <p className="text-xs text-foreground">
           📊 <strong>Métricas do Servidor</strong> — Monitora CPU, RAM, Swap, Disco, Rede, Load Average e Top Processos automaticamente.
