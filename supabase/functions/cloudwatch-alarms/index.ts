@@ -106,9 +106,16 @@ Deno.serve(async (req) => {
     const okCount = alarms.filter(a => a.state === "OK").length;
     const insuffCount = alarms.filter(a => a.state === "INSUFFICIENT_DATA").length;
 
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "cloudwatch_alarms").single();
+    const wr = (ruleRow?.warning_rules ?? { insufficient_data_ratio_gt: 50 }) as Record<string, number>;
+    const or = (ruleRow?.offline_rules ?? { alarm_count_gt: 0 }) as Record<string, number>;
+
+    const insuffRatio = alarms.length > 0 ? (insuffCount / alarms.length) * 100 : 0;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (alarmCount > 0) status = "offline";
-    else if (insuffCount > alarms.length / 2) status = "warning";
+    if (alarmCount > (or.alarm_count_gt ?? 0)) status = "offline";
+    else if (insuffRatio > (wr.insufficient_data_ratio_gt ?? 50)) status = "warning";
 
     const cwDetails = {
       alarms,

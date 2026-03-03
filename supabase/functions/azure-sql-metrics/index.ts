@@ -106,8 +106,13 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
         ? Math.round((size.used_mb / size.allocated_mb) * 100 * 100) / 100
         : 0;
 
+    // Fetch configurable rules
+    const supabaseForRules = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "sql_query").single();
+    const wr = (ruleRow?.warning_rules ?? { cpu_gt: 90, memory_gt: 90, storage_gt: 95 }) as Record<string, number>;
+
     let status: "online" | "offline" | "warning" = "online";
-    if (cpuPercent > 90 || memoryPercent > 90 || storagePercent > 95) {
+    if (cpuPercent > (wr.cpu_gt ?? 90) || memoryPercent > (wr.memory_gt ?? 90) || storagePercent > (wr.storage_gt ?? 95)) {
       status = "warning";
     }
 

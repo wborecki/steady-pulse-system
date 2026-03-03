@@ -129,9 +129,14 @@ Deno.serve(async (req) => {
     const errorRate = invocations > 0 ? (errors / invocations) * 100 : 0;
     const throttles = metrics.Throttles ?? 0;
 
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "lambda").single();
+    const wr = (ruleRow?.warning_rules ?? { error_rate_gt: 2, throttles_gt: 0 }) as Record<string, number>;
+    const or = (ruleRow?.offline_rules ?? { error_rate_gt: 10, throttles_gt: 5 }) as Record<string, number>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (errorRate > 10 || throttles > 5) status = "offline";
-    else if (errorRate > 2 || throttles > 0) status = "warning";
+    if (errorRate > (or.error_rate_gt ?? 10) || throttles > (or.throttles_gt ?? 5)) status = "offline";
+    else if (errorRate > (wr.error_rate_gt ?? 2) || throttles > (wr.throttles_gt ?? 0)) status = "warning";
 
     const lambdaDetails = {
       function_name: functionName,

@@ -68,9 +68,14 @@ Deno.serve(async (req) => {
       ? containers.reduce((sum: number, c: any) => sum + (c.memory_percent || 0), 0) / containers.length
       : 0;
 
+    // Fetch configurable rules
+    const { data: ruleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "container").single();
+    const wr = (ruleRow?.warning_rules ?? { stopped_gt: 0 }) as Record<string, number>;
+    const or = (ruleRow?.offline_rules ?? {}) as Record<string, unknown>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (unhealthy > 0 || (running === 0 && containers.length > 0)) status = "offline";
-    else if (stopped > 0) status = "warning";
+    if ((or.unhealthy_gt !== undefined && unhealthy > (or.unhealthy_gt as number)) || (or.running_zero && running === 0 && containers.length > 0)) status = "offline";
+    else if (wr.stopped_gt !== undefined && stopped > wr.stopped_gt) status = "warning";
 
     const containerDetails: Record<string, unknown> = {
       containers: containers.map((c: any) => ({

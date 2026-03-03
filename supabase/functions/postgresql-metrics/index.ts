@@ -77,8 +77,14 @@ async function collectPostgresMetrics(config: Record<string, unknown>) {
     const tx = txRes.rows[0];
 
     const cacheHit = parseFloat(cache.cache_hit_ratio) || 0;
+
+    // Fetch configurable rules
+    const supabaseForRules = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "postgresql").single();
+    const wr = (ruleRow?.warning_rules ?? { cache_hit_lt: 80, active_connections_gt: 50 }) as Record<string, number>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (cacheHit < 80 || parseInt(conn.active) > 50) status = "warning";
+    if (cacheHit < (wr.cache_hit_lt ?? 80) || parseInt(conn.active) > (wr.active_connections_gt ?? 50)) status = "warning";
 
     return {
       status,

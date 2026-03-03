@@ -48,8 +48,13 @@ async function collectMongoMetrics(config: Record<string, unknown>) {
     const storageSize = dbStats.storageSize || 1;
     const diskPercent = Math.round((dataSize / storageSize) * 100 * 100) / 100;
 
+    // Fetch configurable rules
+    const supabaseForRules = (await import("https://esm.sh/@supabase/supabase-js@2")).createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "mongodb").single();
+    const wr = (ruleRow?.warning_rules ?? { connection_percent_gt: 80, memory_percent_gt: 90 }) as Record<string, number>;
+
     let status: "online" | "warning" | "offline" = "online";
-    if (connPercent > 80 || memPercent > 90) status = "warning";
+    if (connPercent > (wr.connection_percent_gt ?? 80) || memPercent > (wr.memory_percent_gt ?? 90)) status = "warning";
 
     return {
       status,
