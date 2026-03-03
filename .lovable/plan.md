@@ -1,84 +1,131 @@
 
 
-## Análise: O que falta para o sistema estar 100% utilizável
+## Diagnóstico Completo: O que falta para finalizar o MonitorHub
 
-Após revisar todas as páginas, hooks, edge functions e banco de dados, aqui está o diagnóstico completo dividido em **crítico** (impede uso real), **importante** (funcionalidade incompleta) e **polimento** (melhorias de UX).
-
----
-
-### CRÍTICO — Sem isso, não funciona em produção
-
-| # | Item | Estado Atual | O que fazer |
-|---|------|-------------|-------------|
-| 1 | **Cron job para health checks automáticos** | Não existe. Checks só rodam manualmente via botão "Verificar Agora" | Criar cron job via `pg_cron` + `pg_net` para chamar `health-check` a cada 1 minuto automaticamente |
-| 2 | **Notificações externas (email/Slack/webhook)** | Página de Settings é 100% demo — botão "Salvar" não faz nada, campos não persistem | Criar tabela `notification_settings`, persistir configs, e disparar notificações reais quando alertas são criados (edge function `send-notification`) |
-| 3 | **Edição e exclusão de serviços** | Formulário de edição existe (`mode='edit'`), mas não há botão na UI para acessar. Exclusão existe no hook mas sem botão na interface | Adicionar botões "Editar" e "Excluir" (com confirmação) na página `ServiceDetail` |
-| 4 | **Limpeza de dados antigos** | Health checks acumulam infinitamente — sem retenção | Criar função SQL ou cron para deletar health_checks com mais de 30/90 dias |
-
-### IMPORTANTE — Funcionalidade incompleta
-
-| # | Item | Estado Atual | O que fazer |
-|---|------|-------------|-------------|
-| 5 | **Página de Settings funcional** | Campos visuais sem persistência (intervalo, auto-refresh, email, webhook) | Persistir em tabela `app_settings` ou `notification_settings` e aplicar os valores |
-| 6 | **Filtro de alertas** | Lista todos os alertas sem filtro por tipo, serviço ou período | Adicionar filtros (tipo: critical/warning/info, serviço, período) e paginação |
-| 7 | **Exportação de relatórios** | Heatmap, MTTR/MTBF existem mas sem opção de exportar | Adicionar botão para exportar CSV ou PDF |
-| 8 | **Status "maintenance"** | Existe no enum do banco mas sem UI para colocar serviço em manutenção | Adicionar toggle/botão "Modo Manutenção" que pausa alertas para o serviço |
-| 9 | **Gerenciamento de usuários** | Apenas login, sem signup, sem gestão de múltiplos usuários, sem perfil | Adicionar página de perfil e, opcionalmente, gestão de usuários admin |
-| 10 | **Realtime updates** | Dashboard usa polling a cada 15-30s | Habilitar Supabase Realtime nas tabelas `services`, `alerts` e `health_checks` para updates instantâneos |
-
-### POLIMENTO — Tornar profissional
-
-| # | Item |
-|---|------|
-| 11 | Responsividade mobile — sidebar não é mobile-friendly |
-| 12 | Empty states melhores — quando não há serviços cadastrados, guiar o usuário |
-| 13 | Thresholds padrão ao criar serviço (CPU > 90%, Disco > 90%) |
-| 14 | Confirmação de exclusão de threshold |
-| 15 | Dark/light mode toggle na sidebar |
+Após revisar todos os componentes, hooks, edge functions, agente e banco de dados, aqui está o estado atual organizado por categoria.
 
 ---
 
-### Plano de Implementação (ordem sugerida)
-
-**Fase 1 — Tornar funcional (prioridade máxima)**
-1. Criar **cron job** automático para health checks (SQL insert via pg_cron)
-2. Adicionar botões **Editar/Excluir serviço** no ServiceDetail
-3. Tornar **Settings funcional** — persistir notificações em tabela
-
-**Fase 2 — Completar funcionalidades**
-4. Criar **edge function de notificações** (email via Resend ou webhook genérico + Slack)
-5. Adicionar **filtros e paginação** na página de Alertas
-6. Implementar **modo manutenção** para serviços
-7. Criar **retenção automática** de dados antigos
-
-**Fase 3 — Polimento**
-8. Realtime updates via Supabase channels
-9. Exportação de relatórios (CSV)
-10. Responsividade mobile
-11. Thresholds padrão automáticos
-
----
-
-### Arquivos afetados por fase
+### O QUE JA ESTA FUNCIONANDO
 
 ```text
-Fase 1:
-  - SQL: cron job insert (pg_cron + pg_net)
-  - SQL: migration para notification_settings
-  - src/pages/ServiceDetail.tsx (botões editar/excluir)
-  - src/pages/SettingsPage.tsx (persistência)
-
-Fase 2:
-  - supabase/functions/send-notification/index.ts (nova)
-  - src/pages/Alerts.tsx (filtros)
-  - src/hooks/useAlerts.ts (filtros)
-  - supabase/functions/health-check/index.ts (modo manutenção)
-
-Fase 3:
-  - src/pages/Reports.tsx (export CSV)
-  - src/components/monitoring/AppSidebar.tsx (mobile)
-  - Realtime subscriptions nos hooks
+COMPONENTE                          STATUS
+─────────────────────────────────────────────────
+Dashboard (Index.tsx)               ✅ Completo — stats, gráficos, SLA, banner crítico
+Serviços (Services.tsx)             ✅ Completo — busca, filtros, adicionar
+Detalhe do Serviço (ServiceDetail)  ✅ Completo — métricas contextuais por check_type,
+                                       editar, excluir, manutenção, SSL, thresholds
+Alertas (Alerts.tsx)                ✅ Completo — filtros, paginação, reconhecer
+Relatórios (Reports.tsx)            ✅ Completo — heatmap, MTTR/MTBF, ranking, CSV export
+Configurações (SettingsPage.tsx)    ✅ Completo — persiste em notification_settings
+Login (Login.tsx)                   ✅ Funcional — email/senha
+Sidebar (AppSidebar.tsx)            ✅ Funcional — mobile hamburger, collapse
+Realtime (useRealtimeSubscriptions) ✅ Ativo — services, alerts, health_checks
+Thresholds (ThresholdConfigPanel)   ✅ Dinâmico — métricas por check_type + dados reais
+Agente Linux (monitoring-agent.py)  ✅ Completo — systemctl, containers, metrics
+Script instalador (install-agent.sh)✅ Completo — one-liner com systemd
+Edge Functions (14 funções)         ✅ Deployadas — health-check, send-notification,
+                                       server-metrics, aws, azure, postgresql, etc.
+Cron job (pg_cron)                  ✅ Configurado (ver plan.md)
+Limpeza de dados antigos            ✅ Função cleanup_old_health_checks existe
 ```
 
-Deseja que eu implemente por fases, ou quer priorizar itens específicos?
+---
+
+### O QUE PRECISA SER CORRIGIDO OU MELHORADO
+
+#### 1. ServiceRow — Mostra barras CPU/MEM/DISK incorretamente para alguns tipos
+
+**Problema:** A função `showsResourceMetrics()` na linha 74 do `ServiceRow.tsx` só retorna `true` para `tcp`, `process`, `cloudwatch` e quando `checkType` é undefined. Serviços com agente (systemctl, container) que TÊM métricas reais de CPU/MEM/DISK mostram apenas "Latência + Uptime" na lista.
+
+**Correção:** Aplicar a mesma lógica dinâmica do ThresholdConfigPanel — mostrar barras se `service.cpu > 0 || service.memory > 0 || service.disk > 0`, independente do check_type.
+
+#### 2. Email de notificação — Apenas placeholder (log)
+
+**Problema:** No `send-notification/index.ts` linha 84-87, emails são apenas logados no console (`console.log`), nunca enviados de verdade. Slack e webhooks genéricos funcionam.
+
+**Correção:** Integrar com um serviço de email real (Resend, ou usar o Lovable AI para um endpoint simples).
+
+#### 3. Agente — URL hardcoded no install-agent.sh
+
+**Problema:** Linhas 32 e 7-8 do `install-agent.sh` contêm `https://raw.githubusercontent.com/SEU_REPO/main/docs/...` — placeholder nunca atualizado. O script não funciona em produção.
+
+**Correção:** Substituir por URL real do repositório ou hospedar o agente em storage.
+
+#### 4. Sidebar — Label "Colapsar" ausente
+
+**Problema:** O botão de colapsar (linhas 67-72 do AppSidebar.tsx) mostra apenas o ícone `ChevronLeft/ChevronRight`, sem texto quando a sidebar está expandida. Isso confunde usuários.
+
+**Correção:** Adicionar `{!collapsed && <span className="text-xs">Colapsar</span>}` ao lado do ícone.
+
+#### 5. Sem empty state guiado na página de Serviços
+
+**Problema:** Quando não há serviços, mostra apenas "Nenhum serviço encontrado" (linha 101, Services.tsx). Não guia o usuário a criar o primeiro serviço.
+
+**Correção:** Adicionar ilustração/ícone + botão "Adicionar primeiro serviço" que abre o Sheet.
+
+#### 6. Sem confirmação de exclusão de threshold
+
+**Problema:** No `ThresholdConfigPanel.tsx` linha 238, o botão de delete remove imediatamente sem confirmação.
+
+**Correção:** Adicionar AlertDialog de confirmação antes de deletar.
+
+#### 7. Dark/Light mode toggle ausente
+
+**Problema:** O app é 100% dark. Não há toggle para light mode apesar de `next-themes` estar instalado.
+
+**Correção:** Adicionar switch de tema na sidebar ou settings.
+
+#### 8. Responsividade — Header do ServiceDetail quebra em mobile
+
+**Problema:** Os botões do header (Manutenção, Editar, Excluir, Verificar) ficam em `flex-wrap` mas sem espaçamento adequado em telas pequenas, e o título trunca mal.
+
+**Correção:** Stack vertical em mobile (`flex-col` em breakpoint sm).
+
+#### 9. Métricas no ServiceRow para serviços com agente
+
+**Problema:** Serviços do tipo `systemctl` e `container` que recebem métricas via agente (cpu, memory, disk) não mostram as barras de recursos na lista porque `showsResourceMetrics('systemctl')` retorna `false`.
+
+**Correção:** Incluir `systemctl`, `container`, `sql_query`, `mongodb`, `ecs`, `airflow`, `cloudwatch` na lista de tipos com barras, ou usar a abordagem dinâmica baseada nos valores.
+
+#### 10. Gráficos históricos de CPU/MEM/DISK não aparecem para HTTP com agente
+
+**Problema:** No `ServiceDetail.tsx`, os gráficos de `cpuHistory`, `memHistory`, `diskHistory` são renderizados condicionalmente (verificar abaixo dos gráficos de latência), mas podem não estar visíveis para check_types como HTTP que recebem dados via agente externo.
+
+**Observação:** Já funciona se health_checks tiver dados em `cpu/memory/disk` — mas confirmar que a renderização condicional está correta.
+
+---
+
+### RESUMO DE PRIORIDADES
+
+```text
+PRIORIDADE    ITEM                                    ESFORÇO
+──────────────────────────────────────────────────────────────
+Alta          #1 ServiceRow barras dinâmicas           ~15 min
+Alta          #9 Mesmo issue — systemctl/container     Mesma fix
+Média         #4 Label "Colapsar" na sidebar           ~5 min
+Média         #5 Empty state guiado em Services        ~15 min
+Média         #6 Confirmação ao deletar threshold      ~10 min
+Média         #8 Responsividade ServiceDetail header   ~10 min
+Baixa         #2 Email real (precisa serviço externo)  ~30 min
+Baixa         #3 URL do agente no install-agent.sh     ~5 min
+Baixa         #7 Dark/Light mode toggle                ~20 min
+Baixa         #10 Verificar gráficos históricos        ~10 min
+```
+
+### PLANO DE IMPLEMENTACAO
+
+**Batch 1 — Correções rápidas (ServiceRow + Sidebar + Empty State)**
+- `ServiceRow.tsx`: Mudar `showsResourceMetrics()` para verificar `service.cpu > 0 || service.memory > 0 || service.disk > 0` em vez de checkar check_type
+- `AppSidebar.tsx`: Adicionar label "Colapsar" quando expandido
+- `Services.tsx`: Empty state com ícone Server + botão CTA "Adicionar primeiro serviço"
+
+**Batch 2 — UX refinements (Threshold confirm + Mobile + Agente URL)**
+- `ThresholdConfigPanel.tsx`: Wrap delete button com AlertDialog
+- `ServiceDetail.tsx`: Header responsivo com `flex-col` em mobile
+- `install-agent.sh`: Remover placeholder URL ou adicionar instrução para substituir
+
+**Batch 3 — Opcional (Theme toggle + Email real)**
+- Adicionar ThemeProvider com `next-themes` e toggle na sidebar
+- Integrar email real no `send-notification` (Resend ou similar)
 
