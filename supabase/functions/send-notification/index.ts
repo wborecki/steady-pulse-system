@@ -80,23 +80,37 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Email via Lovable AI Gateway (generates and sends email content)
+      // Email via Resend
       if (settings.alert_email) {
         try {
-          const apiKey = Deno.env.get("LOVABLE_API_KEY");
-          if (apiKey) {
+          const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+          if (RESEND_API_KEY) {
             const emoji = type === "critical" ? "🔴" : type === "warning" ? "🟡" : "🔵";
-            const emailSubject = `${emoji} [${type.toUpperCase()}] ${service_name} - Alerta de Monitoramento`;
-            const emailBody = `Alerta de Monitoramento\n\nServiço: ${service_name}\nSeveridade: ${type.toUpperCase()}\nMensagem: ${message}\nHorário: ${new Date().toLocaleString('pt-BR')}\n\n---\nSteady Pulse System`;
-
-            // Send via Supabase Auth admin (invite link as notification workaround)
-            // For production, integrate with a proper email service
-            console.log(`[EMAIL] Alert sent to ${settings.alert_email}: ${emailSubject}`);
-            console.log(`[EMAIL] Body: ${emailBody}`);
-            results.push(`email:sent:${settings.alert_email}`);
+            const res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "Steady Pulse <onboarding@resend.dev>",
+                to: [settings.alert_email],
+                subject: `${emoji} [${type.toUpperCase()}] ${service_name} - Alerta de Monitoramento`,
+                html: `<h2 style="color:#1a1a1a;">Alerta de Monitoramento</h2>
+                       <p><strong>Serviço:</strong> ${service_name}</p>
+                       <p><strong>Severidade:</strong> <span style="color:${type === 'critical' ? '#dc2626' : type === 'warning' ? '#ca8a04' : '#2563eb'}">${type.toUpperCase()}</span></p>
+                       <p><strong>Mensagem:</strong> ${message}</p>
+                       <p><strong>Horário:</strong> ${new Date().toLocaleString('pt-BR')}</p>
+                       <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0"/>
+                       <small style="color:#6b7280;">Steady Pulse System</small>`,
+              }),
+            });
+            const resBody = await res.text();
+            results.push(`email:${res.ok ? "ok" : res.status}:${settings.alert_email}`);
+            if (!res.ok) console.error(`[EMAIL] Resend error:`, resBody);
           } else {
             results.push(`email:no_api_key:${settings.alert_email}`);
-            console.log(`[EMAIL] LOVABLE_API_KEY not configured, skipping email to ${settings.alert_email}`);
+            console.log(`[EMAIL] RESEND_API_KEY not configured, skipping email to ${settings.alert_email}`);
           }
         } catch (emailErr) {
           results.push(`email:error:${emailErr.message}`);
