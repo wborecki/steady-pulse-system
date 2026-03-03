@@ -5,9 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateService, useUpdateService } from '@/hooks/useServices';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, Search, Loader2 } from 'lucide-react';
 
 const categoryLabels: Record<string, string> = {
   aws: 'AWS', database: 'Banco de Dados', airflow: 'Airflow',
@@ -896,7 +898,98 @@ function AgentInstallInstructions() {
   );
 }
 
+function DiscoverButton({ agentUrl, token, type, onDiscovered }: {
+  agentUrl: string;
+  token: string;
+  type: 'systemctl' | 'container';
+  onDiscovered: (items: { name: string; description?: string }[]) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handleDiscover = async () => {
+    if (!agentUrl) {
+      toast.error('Preencha a URL do agente primeiro');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('discover-services', {
+        body: { agent_url: agentUrl, token: token || undefined },
+      });
+      if (error) throw error;
+
+      if (type === 'systemctl') {
+        const services = data?.systemctl_services || [];
+        if (services.length === 0) {
+          toast.info('Nenhum serviço systemd encontrado no agente');
+        } else {
+          toast.success(`${services.length} serviços encontrados!`);
+          onDiscovered(services.map((s: any) => ({ name: s.name, description: s.description })));
+        }
+      } else {
+        const containers = data?.containers || [];
+        if (containers.length === 0) {
+          toast.info('Nenhum container encontrado no agente');
+        } else {
+          toast.success(`${containers.length} containers encontrados!`);
+          onDiscovered(containers.map((c: any) => ({ name: c.name, description: `${c.image} (${c.state})` })));
+        }
+      }
+    } catch (err: any) {
+      toast.error(`Erro ao descobrir serviços: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button type="button" variant="outline" size="sm" onClick={handleDiscover} disabled={loading || !agentUrl} className="gap-2">
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+      {loading ? 'Descobrindo...' : 'Descobrir Serviços'}
+    </Button>
+  );
+}
+
+function DiscoveredList({ items, selected, onToggle }: {
+  items: { name: string; description?: string }[];
+  selected: Set<string>;
+  onToggle: (name: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+      <p className="text-xs font-medium text-foreground">Serviços encontrados ({items.length})</p>
+      {items.map((item) => (
+        <label key={item.name} className="flex items-center gap-2 cursor-pointer hover:bg-secondary/50 rounded p-1 -m-1">
+          <Checkbox
+            checked={selected.has(item.name)}
+            onCheckedChange={() => onToggle(item.name)}
+          />
+          <span className="text-xs font-mono">{item.name}</span>
+          {item.description && <span className="text-xs text-muted-foreground truncate">— {item.description}</span>}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function SystemctlFields() {
+  const [agentUrl, setAgentUrl] = useState('');
+  const [agentToken, setAgentToken] = useState('');
+  const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleItem = (name: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const selectedValue = Array.from(selected).join(', ');
+
   return (
     <div className="space-y-3">
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
@@ -906,15 +999,26 @@ function SystemctlFields() {
       </div>
       <div className="space-y-2">
         <Label>URL do Agente</Label>
-        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" />
-      </div>
-      <div className="space-y-2">
-        <Label>Serviços a Monitorar (separados por vírgula)</Label>
-        <Input name="systemctl_services" required placeholder="nginx, docker, postgresql, redis" className="bg-secondary border-border" />
+        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
       </div>
       <div className="space-y-2">
         <Label>Token de Autenticação (opcional)</Label>
-        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" />
+        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
+      </div>
+
+      <DiscoverButton agentUrl={agentUrl} token={agentToken} type="systemctl" onDiscovered={(items) => {
+        setDiscovered(items);
+        setSelected(new Set(items.map(i => i.name)));
+      }} />
+
+      <DiscoveredList items={discovered} selected={selected} onToggle={toggleItem} />
+
+      <div className="space-y-2">
+        <Label>Serviços a Monitorar (separados por vírgula)</Label>
+        <Input name="systemctl_services" required placeholder="nginx, docker, postgresql, redis" className="bg-secondary border-border" value={selectedValue} onChange={e => {
+          setSelected(new Set(e.target.value.split(',').map(s => s.trim()).filter(Boolean)));
+          setDiscovered([]);
+        }} />
       </div>
       <input type="hidden" name="agent_endpoint" value="/systemctl" />
       <AgentInstallInstructions />
@@ -923,21 +1027,40 @@ function SystemctlFields() {
 }
 
 function ContainerFields() {
+  const [agentUrl, setAgentUrl] = useState('');
+  const [agentToken, setAgentToken] = useState('');
+  const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
+
   return (
     <div className="space-y-3">
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
         <p className="text-xs text-foreground">
-          🔗 <strong>Agente Unificado</strong> — A mesma URL monitora serviços systemd, containers Docker e métricas do servidor automaticamente. Containers são descobertos automaticamente.
+          🔗 <strong>Agente Unificado</strong> — Containers são descobertos automaticamente.
         </p>
       </div>
       <div className="space-y-2">
         <Label>URL do Agente</Label>
-        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" />
+        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
       </div>
       <div className="space-y-2">
         <Label>Token de Autenticação (opcional)</Label>
-        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" />
+        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
       </div>
+
+      <DiscoverButton agentUrl={agentUrl} token={agentToken} type="container" onDiscovered={setDiscovered} />
+
+      {discovered.length > 0 && (
+        <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 max-h-48 overflow-y-auto">
+          <p className="text-xs font-medium text-foreground">Containers encontrados ({discovered.length})</p>
+          {discovered.map((c) => (
+            <div key={c.name} className="flex items-center gap-2 p-1">
+              <span className="text-xs font-mono">{c.name}</span>
+              {c.description && <span className="text-xs text-muted-foreground">— {c.description}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
       <input type="hidden" name="agent_endpoint" value="/containers" />
       <AgentInstallInstructions />
     </div>

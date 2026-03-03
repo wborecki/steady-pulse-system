@@ -214,6 +214,37 @@ def get_systemctl_unit(service_name: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Systemctl list (auto-discovery)
+# ---------------------------------------------------------------------------
+
+
+def list_systemd_services() -> list[dict]:
+    """List all running systemd services (auto-discovery)."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--state=running", "--no-legend", "--no-pager"],
+            capture_output=True, text=True, timeout=10,
+        )
+        services = []
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split()
+            if len(parts) >= 4:
+                name = parts[0]  # e.g. nginx.service
+                sub_state = parts[3] if len(parts) > 3 else "unknown"
+                description = " ".join(parts[4:]) if len(parts) > 4 else ""
+                services.append({
+                    "name": name,
+                    "sub_state": sub_state,
+                    "description": description,
+                })
+        return services
+    except subprocess.TimeoutExpired:
+        return []
+    except FileNotFoundError:
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Docker helpers (via Unix socket — no external deps)
 # ---------------------------------------------------------------------------
 
@@ -356,8 +387,11 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ok",
                 "version": AGENT_VERSION,
                 "timestamp": time.time(),
-                "endpoints": ["/health", "/systemctl", "/containers", "/metrics"],
+                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics"],
             })
+        elif self.path == "/systemctl/list":
+            services = list_systemd_services()
+            self.send_json({"services": services})
         elif self.path == "/containers":
             containers = get_containers()
             self.send_json({"containers": containers})
