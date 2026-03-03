@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useService, useDeleteService } from '@/hooks/useServices';
+import { useService, useDeleteService, useUpdateService } from '@/hooks/useServices';
 import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, ChevronDown, ChevronUp, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -181,6 +181,7 @@ const ServiceDetail = () => {
   const { data: history = [] } = useHealthCheckHistory(id, 200);
   const triggerCheck = useTriggerHealthCheck();
   const deleteService = useDeleteService();
+  const updateService = useUpdateService();
   const [editOpen, setEditOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [historyStatus, setHistoryStatus] = useState('all');
@@ -285,6 +286,16 @@ const ServiceDetail = () => {
     }
   };
 
+  const handleToggleMaintenance = async () => {
+    if (!service) return;
+    const newStatus = service.status === 'maintenance' ? 'online' : 'maintenance';
+    try {
+      await updateService.mutateAsync({ id: service.id, status: newStatus } as any);
+      toast.success(newStatus === 'maintenance' ? 'Serviço em manutenção — alertas pausados' : 'Modo manutenção desativado');
+    } catch {
+      toast.error('Erro ao alterar status');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -326,7 +337,17 @@ const ServiceDetail = () => {
           </div>
           <p className="text-sm text-muted-foreground font-mono">{service.description}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant={service.status === 'maintenance' ? 'default' : 'outline'}
+            size="sm"
+            onClick={handleToggleMaintenance}
+            disabled={updateService.isPending}
+            className="gap-2"
+          >
+            <Wrench className="h-4 w-4" />
+            {service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
             <Pencil className="h-4 w-4" /> Editar
           </Button>

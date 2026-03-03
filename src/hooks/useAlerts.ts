@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
 
 export interface DbAlert {
   id: string;
@@ -11,17 +12,44 @@ export interface DbAlert {
   services?: { name: string };
 }
 
-export function useAlerts() {
+export interface AlertFilters {
+  type: string;
+  serviceId: string;
+  period: string;
+  status: string;
+}
+
+export function useAlerts(filters?: AlertFilters, page = 0, perPage = 30) {
   return useQuery({
-    queryKey: ['alerts'],
+    queryKey: ['alerts', filters, page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('alerts')
-        .select('*, services(name)')
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .select('*, services(name)', { count: 'exact' })
+        .order('created_at', { ascending: false });
+
+      if (filters?.type && filters.type !== 'all') {
+        query = query.eq('type', filters.type as 'critical' | 'warning' | 'info');
+      }
+      if (filters?.serviceId && filters.serviceId !== 'all') {
+        query = query.eq('service_id', filters.serviceId);
+      }
+      if (filters?.status === 'pending') {
+        query = query.eq('acknowledged', false);
+      } else if (filters?.status === 'acknowledged') {
+        query = query.eq('acknowledged', true);
+      }
+      if (filters?.period && filters.period !== 'all') {
+        const hours = Number(filters.period);
+        const since = new Date(Date.now() - hours * 3600000).toISOString();
+        query = query.gte('created_at', since);
+      }
+
+      query = query.range(page * perPage, (page + 1) * perPage - 1);
+
+      const { data, error, count } = await query;
       if (error) throw error;
-      return data as DbAlert[];
+      return { data: data as DbAlert[], count: count ?? 0 };
     },
     refetchInterval: 15000,
   });

@@ -173,7 +173,8 @@ Deno.serve(async (req) => {
     let query = supabase
       .from("services")
       .select("id, name, url, check_type, check_config, status")
-      .eq("enabled", true);
+      .eq("enabled", true)
+      .neq("status", "maintenance");
 
     if (serviceId) {
       query = query.eq("id", serviceId);
@@ -385,31 +386,33 @@ Deno.serve(async (req) => {
         .update(updateData)
         .eq("id", service.id);
 
-      // Create alert if status changed
+      // Create alert if status changed + send notification
+      const insertAndNotify = async (type: string, message: string) => {
+        await supabase.from("alerts").insert({
+          service_id: service.id,
+          type,
+          message,
+        });
+        // Fire-and-forget notification
+        try {
+          const notifUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-notification`;
+          await fetch(notifUrl, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ service_name: service.name, type, message }),
+          }).then(r => r.text());
+        } catch { /* best effort */ }
+      };
+
       if (checkResult.status === "offline" && service.status !== "offline") {
-        await supabase.from("alerts").insert({
-          service_id: service.id,
-          type: "critical",
-          message: `${service.name} ficou offline: ${checkResult.error_message || "Sem resposta"}`,
-        });
-      } else if (
-        checkResult.status === "warning" &&
-        service.status !== "warning"
-      ) {
-        await supabase.from("alerts").insert({
-          service_id: service.id,
-          type: "warning",
-          message: `${service.name}: ${checkResult.error_message || "Performance degradada"}`,
-        });
-      } else if (
-        checkResult.status === "online" &&
-        service.status === "offline"
-      ) {
-        await supabase.from("alerts").insert({
-          service_id: service.id,
-          type: "info",
-          message: `${service.name} voltou ao ar`,
-        });
+        await insertAndNotify("critical", `${service.name} ficou offline: ${checkResult.error_message || "Sem resposta"}`);
+      } else if (checkResult.status === "warning" && service.status !== "warning") {
+        await insertAndNotify("warning", `${service.name}: ${checkResult.error_message || "Performance degradada"}`);
+      } else if (checkResult.status === "online" && service.status === "offline") {
+        await insertAndNotify("info", `${service.name} voltou ao ar`);
       }
 
       // SSL expiry alert
