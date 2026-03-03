@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useServices } from '@/hooks/useServices';
+import { PageLoader } from '@/components/PageLoader';
 import { useHealthChecksForPeriod } from '@/hooks/useHealthChecks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -162,11 +163,7 @@ const Reports = () => {
   }, [services, reliabilityMetrics, latencyTrends, uptimeRanking]);
 
   if (isLoading) {
-    return (
-      <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-muted-foreground">Carregando relatórios...</p>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   return (

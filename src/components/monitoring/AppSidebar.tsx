@@ -4,14 +4,34 @@ import { LayoutDashboard, Server, Bell, Settings, ChevronLeft, ChevronRight, Shi
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from 'next-themes';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/services', label: 'Serviços', icon: Server },
-  { path: '/reports', label: 'Relatórios', icon: BarChart3 },
-  { path: '/alerts', label: 'Alertas', icon: Bell },
-  { path: '/settings', label: 'Configurações', icon: Settings },
-  { path: '/connections', label: 'Conexões', icon: KeyRound },
-  { path: '/docs', label: 'Documentação', icon: Book },
+interface NavSection {
+  label?: string;
+  items: { path: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
+}
+
+const navSections: NavSection[] = [
+  {
+    label: 'Principal',
+    items: [
+      { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/services', label: 'Serviços', icon: Server },
+      { path: '/alerts', label: 'Alertas', icon: Bell },
+    ],
+  },
+  {
+    label: 'Análise',
+    items: [
+      { path: '/reports', label: 'Relatórios', icon: BarChart3 },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { path: '/settings', label: 'Configurações', icon: Settings },
+      { path: '/connections', label: 'Conexões', icon: KeyRound },
+      { path: '/docs', label: 'Documentação', icon: Book },
+    ],
+  },
 ];
 
 export function AppSidebar({ children }: { children: React.ReactNode }) {
@@ -47,25 +67,39 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
-      <nav className="flex-1 p-2 space-y-1">
-        {navItems.map(item => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                isActive
-                  ? 'bg-sidebar-accent text-primary font-semibold'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground'
-              }`}
-            >
-              <item.icon className="h-4 w-4 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 p-2 space-y-4 overflow-y-auto">
+        {navSections.map((section, si) => (
+          <div key={si}>
+            {/* Section label */}
+            {!collapsed && section.label && (
+              <p className="px-3 mb-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60">{section.label}</p>
+            )}
+            {collapsed && si > 0 && (
+              <div className="mx-3 mb-2 border-t border-sidebar-border" />
+            )}
+            <div className="space-y-0.5">
+              {section.items.map(item => {
+                const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
+                      isActive
+                        ? 'bg-sidebar-accent text-primary font-semibold'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground'
+                    } ${collapsed ? 'justify-center' : ''}`}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <item.icon className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-sidebar-border p-2">

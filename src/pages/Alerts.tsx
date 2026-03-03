@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAlerts, useAcknowledgeAlert, useAcknowledgeAll, AlertFilters } from '@/hooks/useAlerts';
+import { PageLoader } from '@/components/PageLoader';
 import { useServices } from '@/hooks/useServices';
 import { AlertItem } from '@/components/monitoring/AlertItem';
 import { Bell, CheckCheck, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
@@ -37,11 +38,7 @@ const Alerts = () => {
   const pendingCount = alerts.filter(a => !a.acknowledged).length;
 
   if (isLoading) {
-    return (
-      <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-muted-foreground">Carregando...</p>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { PageLoader } from '@/components/PageLoader';
 import { useService, useDeleteService, useUpdateService } from '@/hooks/useServices';
 import { useHealthCheckHistory, useFilteredHealthChecks, useTriggerHealthCheck } from '@/hooks/useHealthChecks';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
@@ -502,11 +503,7 @@ const ServiceDetail = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="p-6 grid-bg min-h-screen flex items-center justify-center">
-        <p className="font-mono text-muted-foreground">Carregando...</p>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (!service) {
