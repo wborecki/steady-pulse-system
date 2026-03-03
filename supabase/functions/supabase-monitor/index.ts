@@ -90,8 +90,8 @@ async function checkStorage(projectUrl: string, anonKey: string, serviceRoleKey:
 }
 
 async function checkEdgeFunctions(projectUrl: string, serviceRoleKey: string, functionName?: string): Promise<SubCheck> {
-  // If a specific function is provided, test it. Otherwise test the health-check function.
-  const fnName = functionName || "health-check";
+  // Use a lightweight ping function to test Edge Functions runtime — avoids circular calls to health-check
+  const fnName = functionName || "ping";
   const url = `${projectUrl}/functions/v1/${fnName}`;
   const { response, elapsed, error } = await timedFetch(url, {
     method: "POST",
