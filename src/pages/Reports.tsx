@@ -21,7 +21,7 @@ const Reports = () => {
     const map = new Map<string, { online: number; total: number }>();
     checks.forEach(c => {
       const entry = map.get(c.service_id) || { online: 0, total: 0 };
-      if (c.status === 'online') entry.online++;
+      if (c.status === 'online' || c.status === 'warning') entry.online++;
       entry.total++;
       map.set(c.service_id, entry);
     });
@@ -56,7 +56,7 @@ const Reports = () => {
 
       svcChecks.forEach((c, i) => {
         const t = new Date(c.checked_at).getTime();
-        if (c.status !== 'online') {
+        if (c.status !== 'online' && c.status !== 'warning') {
           if (downStart === null) {
             downStart = t;
             incidents++;
@@ -112,7 +112,7 @@ const Reports = () => {
       svcChecks.forEach(c => {
         const day = new Date(c.checked_at).toISOString().slice(0, 10);
         const entry = dayMap.get(day) || { online: 0, total: 0 };
-        if (c.status === 'online') entry.online++;
+        if (c.status === 'online' || c.status === 'warning') entry.online++;
         entry.total++;
         dayMap.set(day, entry);
       });
@@ -169,7 +169,7 @@ const Reports = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-6 grid-bg min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
