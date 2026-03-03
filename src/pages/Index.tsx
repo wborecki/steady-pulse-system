@@ -124,39 +124,40 @@ const Index = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 grid-bg min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-heading font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground font-mono">
-            Visão geral do sistema • {new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-heading font-bold">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground font-mono truncate">
+            Visão geral • {new Date().toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' })}
             {(() => {
               const lastChecks = services.filter(s => s.last_check).map(s => new Date(s.last_check!).getTime());
               if (lastChecks.length === 0) return null;
               const mostRecent = Math.max(...lastChecks);
               const minutesAgo = Math.round((Date.now() - mostRecent) / 60000);
-              return ` • Última verificação: ${minutesAgo < 1 ? 'agora' : `${minutesAgo}min atrás`}`;
+              return ` • ${minutesAgo < 1 ? 'agora' : `${minutesAgo}min atrás`}`;
             })()}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRunChecks} disabled={triggerCheck.isPending} className="gap-2 font-mono text-xs">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button variant="outline" size="sm" onClick={handleRunChecks} disabled={triggerCheck.isPending} className="gap-1.5 font-mono text-xs h-8">
             <RefreshCw className={`h-3.5 w-3.5 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
-            Verificar Agora
+            <span className="hidden sm:inline">Verificar Agora</span>
+            <span className="sm:hidden">Verificar</span>
           </Button>
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono ${stats.offline > 0 ? 'bg-destructive/10 text-destructive' : stats.warning > 0 ? 'bg-yellow-500/10 text-yellow-600' : 'bg-success/10 text-success'}`}>
-            <Activity className="h-3.5 w-3.5" />
-            {stats.offline > 0 ? `${stats.offline} serviço(s) offline` : stats.warning > 0 ? `${stats.warning} em atenção` : 'Todos os serviços online'}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-mono whitespace-nowrap ${stats.offline > 0 ? 'bg-destructive/10 text-destructive' : stats.warning > 0 ? 'bg-yellow-500/10 text-yellow-600' : 'bg-success/10 text-success'}`}>
+            <Activity className="h-3 w-3" />
+            {stats.offline > 0 ? `${stats.offline} offline` : stats.warning > 0 ? `${stats.warning} atenção` : 'Tudo OK'}
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatsCard title="Serviços Ativos" value={stats.online} subtitle={`de ${stats.total} serviços${stats.warning > 0 ? ` (${stats.warning} em atenção)` : ''}`} icon={CheckCircle} variant="success" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+        <StatsCard title="Serviços Ativos" value={stats.online} subtitle={`de ${stats.total}${stats.warning > 0 ? ` (${stats.warning} atenção)` : ''}`} icon={CheckCircle} variant="success" />
         <StatsCard title="Alertas Ativos" value={unacknowledgedAlerts.length} subtitle="não reconhecidos" icon={AlertTriangle} variant={unacknowledgedAlerts.length > 0 ? 'warning' : 'default'} />
-        <StatsCard title="Serviços Offline" value={stats.offline} subtitle="requer atenção" icon={XCircle} variant={stats.offline > 0 ? 'destructive' : 'default'} />
+        <StatsCard title="Offline" value={stats.offline} subtitle="requer atenção" icon={XCircle} variant={stats.offline > 0 ? 'destructive' : 'default'} />
         <StatsCard title="SLA 24h" value={`${slaStats.sla24h}%`} subtitle="disponibilidade" icon={TrendingUp} />
         <StatsCard title="Uptime Médio" value={`${stats.avgUptime}%`} subtitle="últimas 24h" icon={Clock} />
       </div>
