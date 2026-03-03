@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_thresholds: {
+        Row: {
+          cooldown_minutes: number
+          created_at: string
+          enabled: boolean
+          id: string
+          last_triggered_at: string | null
+          metric: string
+          operator: string
+          service_id: string
+          severity: string
+          threshold: number
+        }
+        Insert: {
+          cooldown_minutes?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_triggered_at?: string | null
+          metric: string
+          operator?: string
+          service_id: string
+          severity?: string
+          threshold: number
+        }
+        Update: {
+          cooldown_minutes?: number
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_triggered_at?: string | null
+          metric?: string
+          operator?: string
+          service_id?: string
+          severity?: string
+          threshold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_thresholds_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alerts: {
         Row: {
           acknowledged: boolean
