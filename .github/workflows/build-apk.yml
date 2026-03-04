@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       # ── 3. Setup do Java (necessário para Gradle/Android) ──
       - name: Setup Java 17
@@ -46,7 +45,7 @@ jobs:
 
       # ── 5. Instalar dependências do projeto ────────────────
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       # ── 6. Build do frontend (Vite → dist/) ───────────────
       - name: Build web app
