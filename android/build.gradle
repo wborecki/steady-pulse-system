@@ -22,6 +22,15 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Fix Kotlin stdlib duplicate classes (jdk7/jdk8 merged into stdlib since 1.8)
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'org.jetbrains.kotlin') {
+                useVersion '1.9.25'
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {
