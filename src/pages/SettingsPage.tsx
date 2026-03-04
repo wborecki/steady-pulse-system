@@ -55,9 +55,9 @@ const SettingsPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-6 grid-bg min-h-screen">
       <div>
-        <h1 className="text-2xl font-heading font-bold">Configurações</h1>
+        <h1 className="text-xl sm:text-2xl font-heading font-bold">Configurações</h1>
         <p className="text-sm text-muted-foreground font-mono">Configurações gerais do monitoramento</p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -66,13 +66,13 @@ const SettingsPage = () => {
             <CardTitle className="text-base font-heading">Monitoramento</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <Label>Intervalo de atualização do dashboard</Label>
                 <p className="text-xs text-muted-foreground">Frequência de refresh automático da interface (o intervalo de verificação de cada serviço é configurado individualmente)</p>
               </div>
               <Select value={interval} onValueChange={setInterval}>
-                <SelectTrigger className="w-36 bg-secondary border-border">
+                <SelectTrigger className="w-full sm:w-36 bg-secondary border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -83,14 +83,14 @@ const SettingsPage = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <Label>Auto-refresh dashboard</Label>
                 <p className="text-xs text-muted-foreground">Atualizar dashboard automaticamente</p>
               </div>
               <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <Label>Alertas sonoros</Label>
                 <p className="text-xs text-muted-foreground">Emitir som ao receber alertas críticos</p>
@@ -117,7 +117,7 @@ const SettingsPage = () => {
               <Label>Webhook genérico</Label>
               <Input value={genericWebhook} onChange={e => setGenericWebhook(e.target.value)} placeholder="https://api.exemplo.com/webhook" className="bg-secondary border-border" />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <Label>Notificar apenas alertas críticos</Label>
                 <p className="text-xs text-muted-foreground">Ignorar warnings e informativos</p>

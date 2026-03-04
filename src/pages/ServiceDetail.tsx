@@ -9,12 +9,13 @@ import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { MetricsBarChart, DagDurationChart } from '@/components/monitoring/AirflowCharts';
 import { AddServiceForm } from '@/components/monitoring/AddServiceForm';
 import { ThresholdConfigPanel } from '@/components/monitoring/ThresholdConfigPanel';
-import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench, Download, ArrowUpCircle } from 'lucide-react';
+import { ArrowLeft, Globe, MapPin, Clock, Activity, RefreshCw, Pencil, Trash2, Settings2, HardDrive, Cpu, MemoryStick, Server, ShieldCheck, ShieldAlert, Network, Plug, Wrench, Download, ArrowUpCircle, MoreVertical } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
 function MetricCard({ label, value, unit, color }: { label: string; value: number | string; unit: string; color: string; invertBar?: boolean }) {
@@ -191,7 +192,8 @@ function ServerMetricsPanel({ server, showExtended = false }: { server: ServerIn
             <h3 className="font-heading font-semibold text-sm mb-3">
               <HardDrive className="h-4 w-4 inline mr-1" />Discos
             </h3>
-            <table className="w-full text-sm font-mono">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm font-mono min-w-[400px]">
               <thead>
                 <tr className="border-b border-border text-muted-foreground text-xs">
                   <th className="p-2 text-left">Mount</th>
@@ -217,6 +219,7 @@ function ServerMetricsPanel({ server, showExtended = false }: { server: ServerIn
                 ))}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -257,7 +260,8 @@ function ServerMetricsPanel({ server, showExtended = false }: { server: ServerIn
             <h3 className="font-heading font-semibold text-sm mb-3">
               <Network className="h-4 w-4 inline mr-1" />Rede
             </h3>
-            <table className="w-full text-sm font-mono">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm font-mono min-w-[320px]">
               <thead>
                 <tr className="border-b border-border text-muted-foreground text-xs">
                   <th className="p-2 text-left">Interface</th>
@@ -275,6 +279,7 @@ function ServerMetricsPanel({ server, showExtended = false }: { server: ServerIn
                 ))}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -287,7 +292,7 @@ function ServerMetricsPanel({ server, showExtended = false }: { server: ServerIn
               <Cpu className="h-4 w-4 inline mr-1" />Top Processos
             </h3>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm font-mono">
+              <table className="w-full text-sm font-mono min-w-[500px]">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground text-xs">
                     <th className="p-2 text-left">PID</th>
@@ -386,6 +391,7 @@ const ServiceDetail = () => {
   const updateService = useUpdateService();
   const [editOpen, setEditOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [historyStatus, setHistoryStatus] = useState('all');
   const [historyPeriod, setHistoryPeriod] = useState('24');
   const [historyPage, setHistoryPage] = useState(0);
@@ -538,29 +544,41 @@ const ServiceDetail = () => {
           </div>
           <p className="text-sm text-muted-foreground font-mono">{service.description}</p>
         </div>
-        <div className="flex gap-2 flex-wrap self-start">
-          <Button
-            variant={service.status === 'maintenance' ? 'default' : 'outline'}
-            size="sm"
-            onClick={handleToggleMaintenance}
-            disabled={updateService.isPending}
-            className="gap-2"
-          >
-            <Wrench className="h-4 w-4" />
-            <span className="hidden sm:inline">{service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}</span>
+        <div className="flex items-center gap-2 self-start">
+          <Button variant="outline" size="sm" onClick={handleCheck} disabled={triggerCheck.isPending} className="gap-2">
+            <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
+            Verificar Agora
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="gap-2">
-            <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Configurações</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
-            <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Editar</span>
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" className="gap-2">
-                <Trash2 className="h-4 w-4" /> <span className="hidden sm:inline">Excluir</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
+                <MoreVertical className="h-4 w-4" />
               </Button>
-            </AlertDialogTrigger>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleToggleMaintenance} disabled={updateService.isPending}>
+                <Wrench className="h-4 w-4 mr-2" />
+                {service.status === 'maintenance' ? 'Sair Manutenção' : 'Manutenção'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
+                <Settings2 className="h-4 w-4 mr-2" />
+                Configurações
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Excluir serviço?</AlertDialogTitle>
@@ -574,10 +592,6 @@ const ServiceDetail = () => {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button variant="outline" size="sm" onClick={handleCheck} disabled={triggerCheck.isPending} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Verificar Agora</span>
-          </Button>
         </div>
       </div>
 
@@ -963,15 +977,15 @@ const ServiceDetail = () => {
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">DAGs Individuais</h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[600px]">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground text-xs">
                           <th className="p-2 text-left">DAG ID</th>
                           <th className="p-2 text-left">Status</th>
-                          <th className="p-2 text-left">Schedule</th>
+                          <th className="p-2 text-left hidden sm:table-cell">Schedule</th>
                           <th className="p-2 text-left">Último Run</th>
                           <th className="p-2 text-right">Duração</th>
-                          <th className="p-2 text-left">Tags</th>
+                          <th className="p-2 text-left hidden sm:table-cell">Tags</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -991,7 +1005,7 @@ const ServiceDetail = () => {
                                 <span className="text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground">{dag.last_run_state || 'N/A'}</span>
                               )}
                             </td>
-                            <td className="p-2 text-xs">{dag.schedule_interval || '-'}</td>
+                            <td className="p-2 text-xs hidden sm:table-cell">{dag.schedule_interval || '-'}</td>
                             <td className="p-2 text-xs">{dag.last_run_date ? new Date(dag.last_run_date).toLocaleString('pt-BR') : '-'}</td>
                             <td className="p-2 text-right text-xs">
                               {dag.last_run_duration_seconds != null
@@ -1000,7 +1014,7 @@ const ServiceDetail = () => {
                                   : `${(dag.last_run_duration_seconds / 60).toFixed(1)}min`
                                 : '-'}
                             </td>
-                            <td className="p-2 text-xs">
+                            <td className="p-2 text-xs hidden sm:table-cell">
                               {dag.tags?.map((t: any) => (typeof t === 'string' ? t : t.name)).join(', ') || '-'}
                             </td>
                           </tr>
@@ -1135,7 +1149,7 @@ const ServiceDetail = () => {
                     <h3 className="font-heading font-semibold text-sm">Top 5 Wait Stats</h3>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[420px]">
                       <thead>
                         <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
                           <th className="pb-2 text-left">Wait Type</th>
@@ -1231,7 +1245,7 @@ const ServiceDetail = () => {
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Top Tables</h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[480px]">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground text-xs">
                           <th className="p-2 text-left">Tabela</th>
@@ -1384,7 +1398,7 @@ const ServiceDetail = () => {
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Queries Ativas</h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[520px]">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground text-xs">
                           <th className="p-2 text-left">PID</th>
@@ -1640,7 +1654,8 @@ const ServiceDetail = () => {
               <Card className="glass-card">
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Deployments</h3>
-                  <table className="w-full text-sm font-mono">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm font-mono min-w-[380px]">
                     <thead>
                       <tr className="border-b border-border text-muted-foreground text-xs">
                         <th className="p-2 text-left">Status</th>
@@ -1660,6 +1675,7 @@ const ServiceDetail = () => {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1685,7 +1701,7 @@ const ServiceDetail = () => {
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Alarmes</h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[420px]">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground text-xs">
                           <th className="p-2 text-left">Nome</th>
@@ -1739,7 +1755,8 @@ const ServiceDetail = () => {
               <Card className="glass-card">
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Serviços</h3>
-                  <table className="w-full text-sm font-mono">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm font-mono min-w-[480px]">
                     <thead>
                       <tr className="border-b border-border text-muted-foreground text-xs">
                         <th className="p-2 text-left">Unit</th>
@@ -1765,6 +1782,7 @@ const ServiceDetail = () => {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -1795,7 +1813,7 @@ const ServiceDetail = () => {
                 <CardContent className="p-4">
                   <h3 className="font-heading font-semibold text-sm mb-3">Containers</h3>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm font-mono">
+                    <table className="w-full text-sm font-mono min-w-[650px]">
                       <thead>
                         <tr className="border-b border-border text-muted-foreground text-xs">
                           <th className="p-2 text-left">Nome</th>
@@ -1953,11 +1971,11 @@ const ServiceDetail = () => {
 
       {/* Health Check History with Filters & Pagination */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h2 className="font-heading font-semibold text-lg">Histórico de Checks</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select value={historyStatus} onValueChange={v => { setHistoryStatus(v); setHistoryPage(0); }}>
-              <SelectTrigger className="w-32 h-8 text-xs bg-secondary border-border">
+              <SelectTrigger className="w-28 sm:w-32 h-8 text-xs bg-secondary border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1968,7 +1986,7 @@ const ServiceDetail = () => {
               </SelectContent>
             </Select>
             <Select value={historyPeriod} onValueChange={v => { setHistoryPeriod(v); setHistoryPage(0); }}>
-              <SelectTrigger className="w-32 h-8 text-xs bg-secondary border-border">
+              <SelectTrigger className="w-28 sm:w-32 h-8 text-xs bg-secondary border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1979,42 +1997,42 @@ const ServiceDetail = () => {
           </div>
         </div>
 
-        <div className="glass-card rounded-lg overflow-hidden">
-          <table className="w-full text-sm font-mono">
+        <div className="glass-card rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm font-mono min-w-[600px]">
             <thead>
-              <tr className="border-b border-border text-muted-foreground text-xs">
-                <th className="p-3 text-left">Horário</th>
-                <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-left">Latência</th>
-                {isHttpType(checkType) && <th className="p-3 text-left">HTTP</th>}
+              <tr className="border-b border-border text-muted-foreground text-xs whitespace-nowrap">
+                <th className="p-2 text-left">Horário</th>
+                <th className="p-2 text-left">Status</th>
+                <th className="p-2 text-left">Latência</th>
+                {isHttpType(checkType) && <th className="p-2 text-left">HTTP</th>}
                 {(isInfraType(checkType) || isDbType(checkType)) && <>
-                  <th className="p-3 text-left">{checkType === 'supabase_project' ? 'Health' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
-                  <th className="p-3 text-left">{checkType === 'supabase_project' ? 'Cache' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
+                  <th className="p-2 text-left">{checkType === 'supabase_project' ? 'Health' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Conn%' : checkType === 'mongodb' ? 'Conn%' : 'CPU'}</th>
+                  <th className="p-2 text-left">{checkType === 'supabase_project' ? 'Cache' : (checkType === 'postgresql' || checkType === 'supabase') ? 'Cache' : checkType === 'mongodb' ? 'Mem%' : 'MEM'}</th>
                 </>}
                 {isAirflowType(checkType) && <>
-                  <th className="p-3 text-left">Pool</th>
-                  <th className="p-3 text-left">Success</th>
+                  <th className="p-2 text-left">Pool</th>
+                  <th className="p-2 text-left">Success</th>
                 </>}
                 {isAgentType(checkType) && <>
-                  <th className="p-3 text-left">{checkType === 'systemctl' ? 'CPU Srv' : 'CPU Cnt'}</th>
-                  <th className="p-3 text-left">{checkType === 'systemctl' ? 'RAM Srv' : 'Mem Cnt'}</th>
-                  <th className="p-3 text-left">Disco</th>
+                  <th className="p-2 text-left">{checkType === 'systemctl' ? 'CPU Srv' : 'CPU Cnt'}</th>
+                  <th className="p-2 text-left">{checkType === 'systemctl' ? 'RAM Srv' : 'Mem Cnt'}</th>
+                  <th className="p-2 text-left">Disco</th>
                 </>}
                 {checkType === 'lambda' && <>
-                  <th className="p-3 text-left">Err%</th>
-                  <th className="p-3 text-left">Duration</th>
-                  <th className="p-3 text-left">Throttle</th>
+                  <th className="p-2 text-left">Err%</th>
+                  <th className="p-2 text-left">Duration</th>
+                  <th className="p-2 text-left">Throttle</th>
                 </>}
                 {checkType === 'cloudwatch_alarms' && <>
-                  <th className="p-3 text-left">Alarm</th>
-                  <th className="p-3 text-left">OK</th>
-                  <th className="p-3 text-left">Insuf.</th>
+                  <th className="p-2 text-left">Alarm</th>
+                  <th className="p-2 text-left">OK</th>
+                  <th className="p-2 text-left">Insuf.</th>
                 </>}
                 {checkType === 'ecs' && <>
-                  <th className="p-3 text-left">CPU</th>
-                  <th className="p-3 text-left">MEM</th>
+                  <th className="p-2 text-left">CPU</th>
+                  <th className="p-2 text-left">MEM</th>
                 </>}
-                <th className="p-3 text-left">Erro</th>
+                <th className="p-2 text-left">Erro</th>
               </tr>
             </thead>
             <tbody>
@@ -2022,38 +2040,38 @@ const ServiceDetail = () => {
                 const isError = h.status === 'offline';
                 return (
                   <tr key={h.id} className={`border-b border-border/50 ${isError ? 'bg-destructive/5' : ''}`}>
-                    <td className="p-3 text-xs">{new Date(h.checked_at).toLocaleString('pt-BR')}</td>
-                    <td className="p-3"><StatusIndicator status={h.status as ServiceStatus} size="sm" showLabel /></td>
-                    <td className="p-3">{h.response_time}ms</td>
-                    {isHttpType(checkType) && <td className="p-3">{h.status_code || '-'}</td>}
+                    <td className="p-2 text-xs whitespace-nowrap">{new Date(h.checked_at).toLocaleString('pt-BR')}</td>
+                    <td className="p-2"><StatusIndicator status={h.status as ServiceStatus} size="sm" showLabel /></td>
+                    <td className="p-2 text-xs">{h.response_time}ms</td>
+                    {isHttpType(checkType) && <td className="p-2 text-xs">{h.status_code || '-'}</td>}
                     {(isInfraType(checkType) || isDbType(checkType)) && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
                     </>}
                     {isAirflowType(checkType) && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
                     </>}
                     {isAgentType(checkType) && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.disk != null ? `${Number(h.disk).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.disk != null ? `${Number(h.disk).toFixed(1)}%` : '-'}</td>
                     </>}
                     {checkType === 'lambda' && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(0)}ms` : '-'}</td>
-                      <td className="p-3">{h.disk != null ? Number(h.disk) : '-'}</td>
+                      <td className="p-2 text-xs">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.memory != null ? `${Number(h.memory).toFixed(0)}ms` : '-'}</td>
+                      <td className="p-2 text-xs">{h.disk != null ? Number(h.disk) : '-'}</td>
                     </>}
                     {checkType === 'cloudwatch_alarms' && <>
-                      <td className="p-3"><span className={Number(h.cpu) > 0 ? 'text-destructive font-bold' : ''}>{h.cpu ?? '-'}</span></td>
-                      <td className="p-3"><span className="text-success">{h.memory ?? '-'}</span></td>
-                      <td className="p-3"><span className="text-warning">{h.disk ?? '-'}</span></td>
+                      <td className="p-2 text-xs"><span className={Number(h.cpu) > 0 ? 'text-destructive font-bold' : ''}>{h.cpu ?? '-'}</span></td>
+                      <td className="p-2 text-xs"><span className="text-success">{h.memory ?? '-'}</span></td>
+                      <td className="p-2 text-xs"><span className="text-warning">{h.disk ?? '-'}</span></td>
                     </>}
                     {checkType === 'ecs' && <>
-                      <td className="p-3">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
-                      <td className="p-3">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.cpu != null ? `${Number(h.cpu).toFixed(1)}%` : '-'}</td>
+                      <td className="p-2 text-xs">{h.memory != null ? `${Number(h.memory).toFixed(1)}%` : '-'}</td>
                     </>}
-                    <td className="p-3 text-xs text-destructive truncate max-w-[200px]">{h.error_message || '-'}</td>
+                    <td className="p-2 text-xs text-destructive truncate max-w-[200px]">{h.error_message || '-'}</td>
                   </tr>
                 );
               })}

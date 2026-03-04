@@ -95,14 +95,25 @@ export function useHealthChecksForPeriod(periodDays: number = 7) {
   return useQuery({
     queryKey: ['health_checks_period', periodDays],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('health_checks')
-        .select('*')
-        .order('checked_at', { ascending: true })
-        .gte('checked_at', new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString())
-        .limit(1000);
-      if (error) throw error;
-      return data as DbHealthCheck[];
+      const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
+      const rows: DbHealthCheck[] = [];
+      let from = 0;
+      const PAGE = 1000;
+      // Paginate to fetch all rows in the period (Supabase default max is 1000)
+      while (true) {
+        const { data, error } = await supabase
+          .from('health_checks')
+          .select('*')
+          .order('checked_at', { ascending: true })
+          .gte('checked_at', since)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        rows.push(...(data as DbHealthCheck[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return rows;
     },
     refetchInterval,
   });

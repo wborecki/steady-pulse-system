@@ -100,19 +100,27 @@ const Reports = () => {
     }).sort((a, b) => b.trend - a.trend);
   }, [checks, services]);
 
+  // Format date as YYYY-MM-DD in local timezone
+  const toLocalDay = useCallback((date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
+
   // Uptime heatmap data: per service per day
   const heatmapData = useMemo(() => {
     const days: string[] = [];
     for (let i = period - 1; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000);
-      days.push(d.toISOString().slice(0, 10));
+      days.push(toLocalDay(d));
     }
 
     return services.map(s => {
       const svcChecks = checks.filter(c => c.service_id === s.id);
       const dayMap = new Map<string, { online: number; total: number }>();
       svcChecks.forEach(c => {
-        const day = new Date(c.checked_at).toISOString().slice(0, 10);
+        const day = toLocalDay(new Date(c.checked_at));
         const entry = dayMap.get(day) || { online: 0, total: 0 };
         if (c.status === 'online' || c.status === 'warning') entry.online++;
         entry.total++;
@@ -128,7 +136,7 @@ const Reports = () => {
         }),
       };
     });
-  }, [checks, services, period]);
+  }, [checks, services, period, toLocalDay]);
 
   function uptimeColor(pct: number): string {
     if (pct < 0) return 'bg-muted';
@@ -171,7 +179,7 @@ const Reports = () => {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Relatórios</h1>
+          <h1 className="text-xl sm:text-2xl font-heading font-bold">Relatórios</h1>
           <p className="text-sm text-muted-foreground font-mono">Análise de confiabilidade e tendências</p>
         </div>
         <div className="flex gap-2">
@@ -230,7 +238,7 @@ const Reports = () => {
                   </div>
                 ))}
                 {/* Legend */}
-                <div className="flex items-center gap-3 mt-3 text-[10px] font-mono text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3 mt-3 text-[10px] font-mono text-muted-foreground">
                   <span>Legenda:</span>
                   <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-success" /> ≥99.5%</span>
                   <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-success/60" /> ≥95%</span>
@@ -254,8 +262,8 @@ const Reports = () => {
             <h2 className="font-heading font-semibold text-lg">MTTR & MTBF</h2>
           </div>
           <Card className="glass-card flex-1">
-            <CardContent className="p-0">
-              <table className="w-full text-xs font-mono table-fixed">
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs font-mono table-fixed min-w-[360px]">
                 <thead>
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="px-3 py-3 text-left">Serviço</th>

@@ -326,7 +326,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
       </div>
 
       {/* Categoria + Check Type */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Categoria</Label>
           <Select value={category} onValueChange={handleCategoryChange}>
@@ -457,7 +457,7 @@ function SshFields({ sshAuthMethod, setSshAuthMethod }: { sshAuthMethod: 'passwo
   return (
     <div className="space-y-3 rounded-md border border-border p-3 bg-secondary/30">
       <p className="text-sm font-medium text-foreground">🔑 Credenciais SSH</p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Host SSH</Label>
           <Input name="ssh_host" required placeholder="192.168.1.100" className="bg-secondary border-border" />
@@ -512,7 +512,7 @@ function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeH
         <Label>URL / Endpoint</Label>
         <Input name="url" required placeholder="https://api.empresa.com" className="bg-secondary border-border" defaultValue={initialUrl || ''} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Método HTTP</Label>
           <Select name="http_method" defaultValue={(initialConfig?.method as string) || 'GET'}>
@@ -541,7 +541,7 @@ function HttpFields({ httpAuthType, setHttpAuthType, headers, addHeader, removeH
         </Select>
       </div>
       {httpAuthType === 'basic' && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label>Usuário</Label>
             <Input name="http_username" required className="bg-secondary border-border" defaultValue={auth?.username || ''} />
@@ -587,8 +587,8 @@ function TcpFields({ sshEnabled, setSshEnabled, sshAuthMethod, setSshAuthMethod,
 }) {
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2 space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="sm:col-span-2 space-y-2">
           <Label>Host</Label>
           <Input name="tcp_host" required placeholder="db.empresa.com" className="bg-secondary border-border" defaultValue={(initialConfig?.host as string) || ''} />
         </div>
@@ -678,8 +678,8 @@ function PostgresFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInpu
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 space-y-2">
               <Label>Host</Label>
               <Input name="db_host" required placeholder="db.empresa.com" className="bg-secondary border-border" value={pgHost} onChange={e => setPgHost(e.target.value)} />
             </div>
@@ -692,7 +692,7 @@ function PostgresFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInpu
             <Label>Database</Label>
             <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={pgDb} onChange={e => setPgDb(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
               <Input name="db_username" required className="bg-secondary border-border" value={pgUser} onChange={e => setPgUser(e.target.value)} />
@@ -763,8 +763,8 @@ function MongoFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMo
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2 space-y-2">
               <Label>Host</Label>
               <Input name="db_host" required placeholder="cluster.mongodb.net" className="bg-secondary border-border" value={mongoHost} onChange={e => setMongoHost(e.target.value)} />
             </div>
@@ -777,7 +777,7 @@ function MongoFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMo
             <Label>Database</Label>
             <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
               <Input name="db_username" required className="bg-secondary border-border" value={mongoUser} onChange={e => setMongoUser(e.target.value)} />
@@ -816,7 +816,7 @@ function CloudWatchFields({ initialConfig }: { initialConfig?: Record<string, un
     <div className="space-y-3">
       <CredentialSelector checkType="cloudwatch" onSelect={handleCredential} />
       <input type="hidden" name="credential_id" value={credentialId} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Tipo de Recurso</Label>
           <Select name="cw_metric_type" defaultValue={(initialConfig?.metric_type as string) || 'EC2'}>
@@ -859,7 +859,7 @@ function S3Fields({ initialConfig }: { initialConfig?: Record<string, unknown> }
     <div className="space-y-3">
       <CredentialSelector checkType="s3" onSelect={handleCredential} />
       <input type="hidden" name="credential_id" value={credentialId} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Nome do Bucket</Label>
           <Input name="s3_bucket" required placeholder="meu-bucket-prod" className="bg-secondary border-border" defaultValue={(initialConfig?.bucket as string) || ''} />
@@ -912,7 +912,7 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Host / Server</Label>
               <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" value={mssqlHost} onChange={e => setMssqlHost(e.target.value)} />
@@ -922,7 +922,7 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
               <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mssqlDb} onChange={e => setMssqlDb(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Usuário</Label>
               <Input name="db_username" required className="bg-secondary border-border" value={mssqlUser} onChange={e => setMssqlUser(e.target.value)} />
@@ -938,7 +938,7 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
           </div>
           <div className="space-y-2 pt-2 border-t border-border">
             <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — necessário quando firewall bloqueia conexão direta)</Label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Agent URL</Label>
                 <Input name="agent_url" placeholder="http://212.47.72.193:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
@@ -989,7 +989,7 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
         <Label>URL do Airflow</Label>
         <Input name="airflow_url" required value={airflowUrl} onChange={e => setAirflowUrl(e.target.value)} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Usuário</Label>
           <Input name="airflow_username" required value={airflowUser} onChange={e => setAirflowUser(e.target.value)} placeholder="admin" className="bg-secondary border-border" />
@@ -1037,7 +1037,7 @@ function LambdaFields({ initialConfig }: { initialConfig?: Record<string, unknow
     <div className="space-y-3">
       <CredentialSelector checkType="lambda" onSelect={handleCredential} />
       <input type="hidden" name="credential_id" value={credentialId} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Nome da Função Lambda</Label>
           <Input name="lambda_function_name" required placeholder="my-function-prod" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.function_name as string) || ''} />
@@ -1070,7 +1070,7 @@ function EcsFields({ initialConfig }: { initialConfig?: Record<string, unknown> 
     <div className="space-y-3">
       <CredentialSelector checkType="ecs" onSelect={handleCredential} />
       <input type="hidden" name="credential_id" value={credentialId} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Cluster ECS</Label>
           <Input name="ecs_cluster" required placeholder="my-cluster" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.cluster as string) || ''} />
@@ -1107,7 +1107,7 @@ function CloudWatchAlarmsFields({ initialConfig }: { initialConfig?: Record<stri
     <div className="space-y-3">
       <CredentialSelector checkType="cloudwatch_alarms" onSelect={handleCredential} />
       <input type="hidden" name="credential_id" value={credentialId} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Prefixo de Alarmes (opcional)</Label>
           <Input name="cw_alarm_prefix" placeholder="prod-" className="bg-secondary border-border" defaultValue={(initialConfig?.alarm_prefix as string) || ''} />

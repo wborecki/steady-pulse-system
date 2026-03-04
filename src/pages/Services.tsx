@@ -42,15 +42,15 @@ const Services = () => {
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-6 grid-bg min-h-screen">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Serviços</h1>
+          <h1 className="text-xl sm:text-2xl font-heading font-bold">Serviços</h1>
           <p className="text-sm text-muted-foreground font-mono">{services.length} serviços configurados</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => triggerCheck.mutateAsync(undefined).then(() => toast.success('Checks executados!'))} disabled={triggerCheck.isPending} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${triggerCheck.isPending ? 'animate-spin' : ''}`} />
-            Verificar Todos
+            <span className="hidden sm:inline">Verificar Todos</span>
           </Button>
           <Sheet open={dialogOpen} onOpenChange={setDialogOpen}>
             <SheetTrigger asChild>
@@ -72,7 +72,7 @@ const Services = () => {
           <Input placeholder="Buscar serviços..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
         </div>
         <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-40 bg-secondary border-border">
+          <SelectTrigger className="w-full sm:w-40 bg-secondary border-border">
             <Filter className="h-3.5 w-3.5 mr-2" /><SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -83,7 +83,7 @@ const Services = () => {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-36 bg-secondary border-border">
+          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

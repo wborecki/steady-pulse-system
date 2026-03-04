@@ -95,7 +95,7 @@ export default function Login() {
               type="button"
               onClick={handleForgotPassword}
               disabled={resetLoading}
-              className="w-full text-xs text-muted-foreground hover:text-primary transition-colors mt-2 flex items-center justify-center gap-1.5"
+              className="w-full text-xs text-muted-foreground hover:text-primary transition-colors mt-2 flex items-center justify-center gap-1.5 min-h-[44px]"
             >
               <Mail className="h-3 w-3" />
               {resetLoading ? 'Enviando...' : 'Esqueci minha senha'}

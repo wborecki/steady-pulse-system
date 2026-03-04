@@ -1,0 +1,91 @@
+# ============================================================
+# GitHub Actions — Build APK (Capacitor + Android)
+# ============================================================
+# Gera um APK debug e release a cada push na main,
+# ou manualmente pelo botão "Run workflow" no GitHub.
+# O APK fica disponível como artifact para download.
+# ============================================================
+
+name: Build Android APK
+
+on:
+  # Dispara automaticamente a cada push na branch main
+  push:
+    branches: [main]
+
+  # Permite rodar manualmente pela aba Actions do GitHub
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout do código ──────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Setup do Node.js ────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # ── 3. Setup do Java (necessário para Gradle/Android) ──
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # ── 4. Setup do Android SDK ────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ── 5. Instalar dependências do projeto ────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── 6. Build do frontend (Vite → dist/) ───────────────
+      - name: Build web app
+        run: npm run build
+        env:
+          # Variáveis de ambiente do Supabase para o build
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      # ── 7. Sync Capacitor (copia dist/ → android/) ────────
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      # ── 8. Tornar gradlew executável ───────────────────────
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # ── 9. Build APK Debug ─────────────────────────────────
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # ── 10. Build APK Release (unsigned) ───────────────────
+      - name: Build Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # ── 11. Upload APK Debug como artifact ─────────────────
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitorhub-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      # ── 12. Upload APK Release como artifact ───────────────
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitorhub-release-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 30

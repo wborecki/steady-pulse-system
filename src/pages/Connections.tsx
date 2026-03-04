@@ -126,18 +126,18 @@ export default function Connections() {
   }
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-6 grid-bg min-h-screen">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-bold flex items-center gap-2">
-            <KeyRound className="h-6 w-6 text-primary" />
+          <h1 className="text-xl sm:text-2xl font-heading font-bold flex items-center gap-2">
+            <KeyRound className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
             Conexões &amp; Credenciais
           </h1>
           <p className="text-sm text-muted-foreground font-mono">
             Gerencie credenciais reutilizáveis para serviços
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
+        <Button onClick={openCreate} className="gap-2 w-full sm:w-auto">
           <Plus className="h-4 w-4" /> Nova Credencial
         </Button>
       </div>
@@ -149,7 +149,7 @@ export default function Connections() {
           <Input placeholder="Buscar credenciais..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
         </div>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-48 bg-secondary border-border">
+          <SelectTrigger className="w-full sm:w-48 bg-secondary border-border">
             <Filter className="h-3.5 w-3.5 mr-2" /><SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -290,12 +290,12 @@ function CredentialRow({ credential, onEdit, onDelete }: { credential: Credentia
         </div>
 
         {/* Actions */}
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-            <Pencil className="h-3.5 w-3.5" />
+        <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+            <Pencil className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={onDelete}>
-            <Trash2 className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-7 sm:w-7 text-destructive hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
           </Button>
         </div>
       </div>

@@ -42,14 +42,14 @@ const Alerts = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-6 grid-bg min-h-screen">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-heading font-bold">Alertas</h1>
+          <h1 className="text-xl sm:text-2xl font-heading font-bold">Alertas</h1>
           <p className="text-sm text-muted-foreground font-mono">{totalCount} alertas encontrados</p>
         </div>
         {pendingCount > 0 && (
-          <Button variant="outline" onClick={handleAcknowledgeAll} className="gap-2">
+          <Button variant="outline" onClick={handleAcknowledgeAll} className="gap-2 w-full sm:w-auto">
             <CheckCheck className="h-4 w-4" /> Reconhecer Todos
           </Button>
         )}
@@ -59,7 +59,7 @@ const Alerts = () => {
       <div className="flex flex-wrap gap-3 items-center">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <Select value={filters.type} onValueChange={v => updateFilter('type', v)}>
-          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
@@ -71,7 +71,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.serviceId} onValueChange={v => updateFilter('serviceId', v)}>
-          <SelectTrigger className="w-44 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="w-full sm:w-44 bg-secondary border-border h-9 text-xs">
             <SelectValue placeholder="Serviço" />
           </SelectTrigger>
           <SelectContent>
@@ -83,7 +83,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.period} onValueChange={v => updateFilter('period', v)}>
-          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -96,7 +96,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.status} onValueChange={v => updateFilter('status', v)}>
-          <SelectTrigger className="w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
