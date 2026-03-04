@@ -56,10 +56,10 @@ const Alerts = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <Filter className="h-4 w-4 text-muted-foreground" />
+      <div className="flex gap-2 items-center overflow-x-auto pb-1 -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible scrollbar-hide">
+        <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
         <Select value={filters.type} onValueChange={v => updateFilter('type', v)}>
-          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
@@ -71,7 +71,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.serviceId} onValueChange={v => updateFilter('serviceId', v)}>
-          <SelectTrigger className="w-full sm:w-44 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="min-w-[150px] sm:w-44 bg-secondary border-border h-9 text-xs shrink-0">
             <SelectValue placeholder="Serviço" />
           </SelectTrigger>
           <SelectContent>
@@ -83,7 +83,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.period} onValueChange={v => updateFilter('period', v)}>
-          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -96,7 +96,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.status} onValueChange={v => updateFilter('status', v)}>
-          <SelectTrigger className="w-full sm:w-36 bg-secondary border-border h-9 text-xs">
+          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>

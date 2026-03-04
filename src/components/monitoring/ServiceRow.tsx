@@ -157,7 +157,7 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
             <h3 className="font-heading font-semibold text-sm truncate">{service.name}</h3>
             <StatusIndicator status={service.status as ServiceStatus} size="sm" />
           </div>
-          <p className="text-xs text-muted-foreground font-mono">
+          <p className="text-xs text-muted-foreground font-mono leading-relaxed">
             {categoryLabels[service.category] || service.category}
             {service.check_type && ` • ${checkTypeLabels[service.check_type] || service.check_type}`}
             {' • '}{statusLabels[service.status] || service.status}

@@ -181,6 +181,15 @@ html.native-app {
   .glass-card {
     @apply bg-card/80 backdrop-blur-sm border border-border;
   }
+
+  /* Hide scrollbar on horizontal scroll filters */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes pulse-glow {
