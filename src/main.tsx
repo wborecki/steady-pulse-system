@@ -7,8 +7,12 @@ import "./index.css";
 
 // Inicializa plugins nativos do Capacitor quando rodando como app
 if (Capacitor.isNativePlatform()) {
+  // Marca o HTML para CSS saber que estamos em app nativo
+  document.documentElement.classList.add('native-app');
+
   StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
   StatusBar.setBackgroundColor({ color: '#0a0a0a' }).catch(() => {});
+  StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
   SplashScreen.hide().catch(() => {});
 }
 

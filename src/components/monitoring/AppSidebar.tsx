@@ -131,7 +131,7 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
       {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-3 left-3 z-50 md:hidden p-2 rounded-lg bg-sidebar border border-sidebar-border text-foreground"
+        className="fixed top-[calc(0.75rem+var(--safe-area-top))] left-3 z-50 md:hidden p-2 rounded-lg bg-sidebar border border-sidebar-border text-foreground"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -151,11 +151,12 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
           ${collapsed ? 'md:w-16' : 'md:w-56'}
         `}
+        style={{ paddingTop: 'var(--safe-area-top)' }}
       >
         {sidebarContent}
       </aside>
 
-      <main className="flex-1 overflow-auto pt-12 md:pt-0">
+      <main className="flex-1 overflow-auto pt-[calc(3rem+var(--safe-area-top))] md:pt-0">
         {children}
       </main>
     </div>

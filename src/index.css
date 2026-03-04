@@ -12,6 +12,11 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
+/* Quando Capacitor overlay ativo mas env() retorna 0, força um mínimo seguro */
+html.native-app {
+  --safe-area-top: env(safe-area-inset-top, 28px);
+}
+
 @layer base {
   :root {
     --background: 210 20% 96%;
