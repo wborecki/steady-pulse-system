@@ -3,7 +3,7 @@ import { useAlerts, useAcknowledgeAlert, useAcknowledgeAll, AlertFilters } from 
 import { PageLoader } from '@/components/PageLoader';
 import { useServices } from '@/hooks/useServices';
 import { AlertItem } from '@/components/monitoring/AlertItem';
-import { Bell, CheckCheck, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Bell, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
@@ -56,10 +56,9 @@ const Alerts = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 items-center overflow-x-auto pb-1 -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible scrollbar-hide">
-        <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:items-center">
         <Select value={filters.type} onValueChange={v => updateFilter('type', v)}>
-          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
+          <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-36">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
@@ -71,7 +70,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.serviceId} onValueChange={v => updateFilter('serviceId', v)}>
-          <SelectTrigger className="min-w-[150px] sm:w-44 bg-secondary border-border h-9 text-xs shrink-0">
+          <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-44">
             <SelectValue placeholder="Serviço" />
           </SelectTrigger>
           <SelectContent>
@@ -83,7 +82,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.period} onValueChange={v => updateFilter('period', v)}>
-          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
+          <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-36">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -96,7 +95,7 @@ const Alerts = () => {
         </Select>
 
         <Select value={filters.status} onValueChange={v => updateFilter('status', v)}>
-          <SelectTrigger className="min-w-[120px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
+          <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-36">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>

@@ -67,14 +67,14 @@ const Services = () => {
       </div>
 
       <div className="space-y-3">
-        <div className="relative max-w-md">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar serviços..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-3 px-3 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible scrollbar-hide">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
           <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="min-w-[150px] sm:w-40 bg-secondary border-border h-9 text-xs shrink-0">
-              <Filter className="h-3.5 w-3.5 mr-1.5" /><SelectValue />
+            <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-40">
+              <Filter className="h-3.5 w-3.5 mr-1.5 shrink-0" /><SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas categorias</SelectItem>
@@ -84,7 +84,7 @@ const Services = () => {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="min-w-[130px] sm:w-36 bg-secondary border-border h-9 text-xs shrink-0">
+            <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

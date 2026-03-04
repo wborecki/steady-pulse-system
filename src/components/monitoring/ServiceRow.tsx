@@ -1,5 +1,3 @@
-import { StatusIndicator } from './StatusIndicator';
-import { type ServiceStatus } from '@/data/mockData';
 import { Card } from '@/components/ui/card';
 import { Cloud, Database, Wind, Server, Cog, Globe, TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react';
 
@@ -137,6 +135,13 @@ function showsResourceMetrics(service: ServiceLike): boolean {
   return m.cpu || m.memory || m.disk;
 }
 
+const statusBorderColor: Record<string, string> = {
+  online: 'border-l-green-500',
+  offline: 'border-l-red-500',
+  warning: 'border-l-yellow-500',
+  maintenance: 'border-l-gray-400',
+};
+
 export function ServiceRow({ service, onClick }: ServiceRowProps) {
   const Icon = categoryIconMap[service.category] || Server;
   const timeSince = getTimeSinceCheck(service.last_check);
@@ -144,7 +149,7 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
 
   return (
     <Card
-      className="glass-card p-4 cursor-pointer hover:border-primary/40 transition-all hover:bg-card/90"
+      className={`glass-card p-4 cursor-pointer hover:border-primary/40 transition-all hover:bg-card/90 border-l-[3px] ${statusBorderColor[service.status] || 'border-l-gray-400'}`}
       onClick={() => onClick?.(service)}
     >
       <div className="flex items-center gap-4">
@@ -153,10 +158,7 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-heading font-semibold text-sm truncate">{service.name}</h3>
-            <StatusIndicator status={service.status as ServiceStatus} size="sm" />
-          </div>
+          <h3 className="font-heading font-semibold text-sm truncate">{service.name}</h3>
           <p className="text-xs text-muted-foreground font-mono leading-relaxed">
             {categoryLabels[service.category] || service.category}
             {service.check_type && ` • ${checkTypeLabels[service.check_type] || service.check_type}`}
