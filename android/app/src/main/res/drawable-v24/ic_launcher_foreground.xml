@@ -3,29 +3,10 @@
     android:height="108dp"
     android:viewportHeight="108"
     android:viewportWidth="108">
-    <!-- Shield shape - filled translucent -->
-    <path
-        android:fillColor="#262dd4bf"
-        android:pathData="M54,18 L28,32 L28,56 C28,72 39,84 54,90 C69,84 80,72 80,56 L80,32 Z" />
-    <!-- Shield outline -->
+    <!-- Shield outline only — matches favicon.svg -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#2dd4bf"
-        android:strokeWidth="3.5"
+        android:strokeWidth="4"
         android:pathData="M54,18 L28,32 L28,56 C28,72 39,84 54,90 C69,84 80,72 80,56 L80,32 Z" />
-    <!-- Pulse/heartbeat line -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#2dd4bf"
-        android:strokeWidth="3.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M35,56 L44,56 L48,44 L54,68 L60,36 L66,62 L69,52 L74,52" />
-    <!-- Dot accents -->
-    <path
-        android:fillColor="#2dd4bf"
-        android:pathData="M35,56 m-2,0 a2,2 0 1,1 4,0 a2,2 0 1,1 -4,0" />
-    <path
-        android:fillColor="#2dd4bf"
-        android:pathData="M74,52 m-2,0 a2,2 0 1,1 4,0 a2,2 0 1,1 -4,0" />
 </vector>
