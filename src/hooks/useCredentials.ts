@@ -56,6 +56,7 @@ export const credentialFields: Record<CredentialType, { key: string; label: stri
   agent: [
     { key: 'agent_url', label: 'URL do Agente', placeholder: 'http://192.168.1.100:9100', required: true },
     { key: 'token', label: 'Token de Autenticação', type: 'password', placeholder: 'Token Bearer' },
+    { key: 'allowed_ips', label: 'IPs Permitidos', placeholder: '203.0.113.5, 10.0.0.0/24' },
   ],
   airflow: [
     { key: 'base_url', label: 'URL do Airflow', placeholder: 'http://localhost:8080', required: true },

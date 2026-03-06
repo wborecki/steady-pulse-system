@@ -71,9 +71,9 @@ const Services = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar serviços..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
+        <div className="flex flex-row gap-2">
           <Select value={filterCategory} onValueChange={setFilterCategory}>
-            <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-40">
+            <SelectTrigger className="bg-secondary border-border h-9 text-xs w-[calc(50%-0.25rem)] sm:w-40">
               <Filter className="h-3.5 w-3.5 mr-1.5 shrink-0" /><SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -84,7 +84,7 @@ const Services = () => {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="bg-secondary border-border h-9 text-xs sm:w-36">
+            <SelectTrigger className="bg-secondary border-border h-9 text-xs w-[calc(50%-0.25rem)] sm:w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

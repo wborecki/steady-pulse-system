@@ -169,6 +169,8 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         const agentToken = (form.get('agent_token') as string || '').trim();
         if (agentUrl) checkConfig.agent_url = agentUrl;
         if (agentToken) checkConfig.agent_token = agentToken;
+        const sqlCredId = (form.get('credential_id') as string || '').trim();
+        if (sqlCredId) checkConfig.credential_id = sqlCredId;
         break;
       }
       case 'postgresql':
@@ -190,6 +192,8 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         const pgAgentToken = (form.get('agent_token') as string || '').trim();
         if (pgAgentUrl) checkConfig.agent_url = pgAgentUrl;
         if (pgAgentToken) checkConfig.agent_token = pgAgentToken;
+        const pgCredId = (form.get('credential_id') as string || '').trim();
+        if (pgCredId) checkConfig.credential_id = pgCredId;
         break;
       }
       case 'mongodb': {
@@ -208,6 +212,8 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
             auth_source: (form.get('db_auth_source') as string) || 'admin',
           };
         }
+        const mongoCredId = (form.get('credential_id') as string || '').trim();
+        if (mongoCredId) checkConfig.credential_id = mongoCredId;
         break;
       }
       case 'cloudwatch':
@@ -232,6 +238,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           username: form.get('airflow_username') as string,
           password: form.get('airflow_password') as string,
           auth_type: (form.get('airflow_auth_type') as string) || 'jwt',
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'lambda':
@@ -262,6 +269,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           services: (form.get('systemctl_services') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
           endpoint: (form.get('agent_endpoint') as string) || '/systemctl',
           token: (form.get('agent_token') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'container':
@@ -269,12 +277,14 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           agent_url: form.get('agent_url') as string,
           endpoint: (form.get('agent_endpoint') as string) || '/containers',
           token: (form.get('agent_token') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'server':
         checkConfig = {
           agent_url: form.get('agent_url') as string,
           token: (form.get('agent_token') as string) || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
       case 'supabase_project':
@@ -283,6 +293,7 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
           anon_key: (form.get('sb_anon_key') as string || '').trim(),
           service_role_key: (form.get('sb_service_role_key') as string || '').trim(),
           test_function: (form.get('sb_test_function') as string || '').trim() || undefined,
+          credential_id: (form.get('credential_id') as string) || undefined,
         };
         break;
     }
@@ -649,6 +660,8 @@ function PostgresFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInpu
   const [pgDb, setPgDb] = useState((initialConfig?.database as string) || '');
   const [pgUser, setPgUser] = useState((initialConfig?.username as string) || '');
   const [pgPass, setPgPass] = useState((initialConfig?.password as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -664,57 +677,87 @@ function PostgresFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInpu
         setPgUser(c.username || '');
         setPgPass(c.password || '');
       }
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="postgresql" onSelect={handleCredential} />
-      <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
-      {dbInputMode === 'connection_string' ? (
-        <div className="space-y-2">
-          <Label>Connection String</Label>
-          <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" value={pgConnStr} onChange={e => setPgConnStr(e.target.value)} />
-        </div>
+      <CredentialSelector checkType="postgresql" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — Dados de conexão herdados automaticamente.
+            </p>
+          </div>
+          {dbInputMode === 'connection_string' ? (
+            <input type="hidden" name="pg_connection_string" value={pgConnStr} />
+          ) : (
+            <>
+              <input type="hidden" name="db_host" value={pgHost} />
+              <input type="hidden" name="db_port" value={pgPort} />
+              <input type="hidden" name="db_name" value={pgDb} />
+              <input type="hidden" name="db_username" value={pgUser} />
+              <input type="hidden" name="db_password" value={pgPass} />
+              <input type="hidden" name="db_ssl_mode" value="prefer" />
+            </>
+          )}
+        </>
       ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 space-y-2">
-              <Label>Host</Label>
-              <Input name="db_host" required placeholder="db.empresa.com" className="bg-secondary border-border" value={pgHost} onChange={e => setPgHost(e.target.value)} />
-            </div>
+        <>
+          <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
+          {dbInputMode === 'connection_string' ? (
             <div className="space-y-2">
-              <Label>Porta</Label>
-              <Input name="db_port" type="number" className="bg-secondary border-border" value={pgPort} onChange={e => setPgPort(e.target.value)} />
+              <Label>Connection String</Label>
+              <Input name="pg_connection_string" required placeholder="postgresql://user:pass@host:5432/dbname" className="bg-secondary border-border font-mono text-xs" value={pgConnStr} onChange={e => setPgConnStr(e.target.value)} />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Database</Label>
-            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={pgDb} onChange={e => setPgDb(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" value={pgUser} onChange={e => setPgUser(e.target.value)} />
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label>Host</Label>
+                  <Input name="db_host" required placeholder="db.empresa.com" className="bg-secondary border-border" value={pgHost} onChange={e => setPgHost(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Porta</Label>
+                  <Input name="db_port" type="number" className="bg-secondary border-border" value={pgPort} onChange={e => setPgPort(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Database</Label>
+                <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={pgDb} onChange={e => setPgDb(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Usuário</Label>
+                  <Input name="db_username" required className="bg-secondary border-border" value={pgUser} onChange={e => setPgUser(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Senha</Label>
+                  <Input name="db_password" type="password" required className="bg-secondary border-border" value={pgPass} onChange={e => setPgPass(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>SSL Mode</Label>
+                <Select name="db_ssl_mode" defaultValue="prefer">
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="disable">Disable</SelectItem>
+                    <SelectItem value="prefer">Prefer</SelectItem>
+                    <SelectItem value="require">Require</SelectItem>
+                    <SelectItem value="verify-full">Verify Full</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" value={pgPass} onChange={e => setPgPass(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>SSL Mode</Label>
-            <Select name="db_ssl_mode" defaultValue="prefer">
-              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="disable">Disable</SelectItem>
-                <SelectItem value="prefer">Prefer</SelectItem>
-                <SelectItem value="require">Require</SelectItem>
-                <SelectItem value="verify-full">Verify Full</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+          )}
+        </>
       )}
       <p className="text-xs text-muted-foreground">Coleta: conexões, cache hit ratio, tamanho do banco, replication lag.</p>
     </div>
@@ -728,6 +771,8 @@ function MongoFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMo
   const [mongoDb, setMongoDb] = useState((initialConfig?.database as string) || '');
   const [mongoUser, setMongoUser] = useState((initialConfig?.username as string) || '');
   const [mongoPass, setMongoPass] = useState((initialConfig?.password as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -743,55 +788,88 @@ function MongoFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMo
         setMongoUser(c.username || '');
         setMongoPass(c.password || '');
       }
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="mongodb" onSelect={handleCredential} />
-      <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
-      {dbInputMode === 'connection_string' ? (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label>Connection String</Label>
-            <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" value={mongoConnStr} onChange={e => setMongoConnStr(e.target.value)} />
+      <CredentialSelector checkType="mongodb" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — Dados de conexão herdados automaticamente.
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label>Database (opcional)</Label>
-            <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
-          </div>
-        </div>
+          {dbInputMode === 'connection_string' ? (
+            <>
+              <input type="hidden" name="mongo_connection_string" value={mongoConnStr} />
+              <input type="hidden" name="mongo_database" value={mongoDb} />
+            </>
+          ) : (
+            <>
+              <input type="hidden" name="db_host" value={mongoHost} />
+              <input type="hidden" name="db_port" value={mongoPort} />
+              <input type="hidden" name="db_name" value={mongoDb} />
+              <input type="hidden" name="db_username" value={mongoUser} />
+              <input type="hidden" name="db_password" value={mongoPass} />
+              <input type="hidden" name="db_auth_source" value="admin" />
+            </>
+          )}
+        </>
       ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 space-y-2">
-              <Label>Host</Label>
-              <Input name="db_host" required placeholder="cluster.mongodb.net" className="bg-secondary border-border" value={mongoHost} onChange={e => setMongoHost(e.target.value)} />
+        <>
+          <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
+          {dbInputMode === 'connection_string' ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Connection String</Label>
+                <Input name="mongo_connection_string" required placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="bg-secondary border-border font-mono text-xs" value={mongoConnStr} onChange={e => setMongoConnStr(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Database (opcional)</Label>
+                <Input name="mongo_database" placeholder="nome_do_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Porta</Label>
-              <Input name="db_port" type="number" className="bg-secondary border-border" value={mongoPort} onChange={e => setMongoPort(e.target.value)} />
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label>Host</Label>
+                  <Input name="db_host" required placeholder="cluster.mongodb.net" className="bg-secondary border-border" value={mongoHost} onChange={e => setMongoHost(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Porta</Label>
+                  <Input name="db_port" type="number" className="bg-secondary border-border" value={mongoPort} onChange={e => setMongoPort(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Database</Label>
+                <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Usuário</Label>
+                  <Input name="db_username" required className="bg-secondary border-border" value={mongoUser} onChange={e => setMongoUser(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Senha</Label>
+                  <Input name="db_password" type="password" required className="bg-secondary border-border" value={mongoPass} onChange={e => setMongoPass(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Auth Source</Label>
+                <Input name="db_auth_source" defaultValue="admin" className="bg-secondary border-border" />
+              </div>
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Database</Label>
-            <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mongoDb} onChange={e => setMongoDb(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" value={mongoUser} onChange={e => setMongoUser(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" value={mongoPass} onChange={e => setMongoPass(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Auth Source</Label>
-            <Input name="db_auth_source" defaultValue="admin" className="bg-secondary border-border" />
-          </div>
-        </div>
+          )}
+        </>
       )}
       <p className="text-xs text-muted-foreground">Coleta: conexões, memória, opcounters, tamanho do banco.</p>
     </div>
@@ -814,7 +892,7 @@ function CloudWatchFields({ initialConfig }: { initialConfig?: Record<string, un
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="cloudwatch" onSelect={handleCredential} />
+      <CredentialSelector checkType="cloudwatch" onSelect={handleCredential} initialCredentialId={credentialId} />
       <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -857,7 +935,7 @@ function S3Fields({ initialConfig }: { initialConfig?: Record<string, unknown> }
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="s3" onSelect={handleCredential} />
+      <CredentialSelector checkType="s3" onSelect={handleCredential} initialCredentialId={credentialId} />
       <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -884,6 +962,8 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
   const [mssqlDb, setMssqlDb] = useState((initialConfig?.database as string) || '');
   const [mssqlUser, setMssqlUser] = useState((initialConfig?.username as string) || '');
   const [mssqlPass, setMssqlPass] = useState((initialConfig?.password as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -898,58 +978,86 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
         setMssqlUser(c.username || '');
         setMssqlPass(c.password || '');
       }
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="sql_query" onSelect={handleCredential} />
-      <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
-      {dbInputMode === 'connection_string' ? (
-        <div className="space-y-2">
-          <Label>Connection String</Label>
-          <Input name="mssql_connection_string" required placeholder="Server=host;Database=db;User Id=user;Password=pass;" className="bg-secondary border-border font-mono text-xs" value={mssqlConnStr} onChange={e => setMssqlConnStr(e.target.value)} />
-        </div>
+      <CredentialSelector checkType="sql_query" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — Dados de conexão herdados automaticamente.
+            </p>
+          </div>
+          {dbInputMode === 'connection_string' ? (
+            <input type="hidden" name="mssql_connection_string" value={mssqlConnStr} />
+          ) : (
+            <>
+              <input type="hidden" name="db_host" value={mssqlHost} />
+              <input type="hidden" name="db_name" value={mssqlDb} />
+              <input type="hidden" name="db_username" value={mssqlUser} />
+              <input type="hidden" name="db_password" value={mssqlPass} />
+            </>
+          )}
+        </>
       ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <>
+          <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
+          {dbInputMode === 'connection_string' ? (
             <div className="space-y-2">
-              <Label>Host / Server</Label>
-              <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" value={mssqlHost} onChange={e => setMssqlHost(e.target.value)} />
+              <Label>Connection String</Label>
+              <Input name="mssql_connection_string" required placeholder="Server=host;Database=db;User Id=user;Password=pass;" className="bg-secondary border-border font-mono text-xs" value={mssqlConnStr} onChange={e => setMssqlConnStr(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Database</Label>
-              <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mssqlDb} onChange={e => setMssqlDb(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Usuário</Label>
-              <Input name="db_username" required className="bg-secondary border-border" value={mssqlUser} onChange={e => setMssqlUser(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input name="db_password" type="password" required className="bg-secondary border-border" value={mssqlPass} onChange={e => setMssqlPass(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" name="db_trust_cert" id="db_trust_cert" className="rounded border-border" defaultChecked={!!initialConfig?.trust_server_certificate} />
-            <Label htmlFor="db_trust_cert" className="text-xs">Trust Server Certificate</Label>
-          </div>
-          <div className="space-y-2 pt-2 border-t border-border">
-            <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — necessário quando firewall bloqueia conexão direta)</Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Agent URL</Label>
-                <Input name="agent_url" placeholder="http://212.47.72.193:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Host / Server</Label>
+                  <Input name="db_host" required placeholder="server.database.windows.net" className="bg-secondary border-border" value={mssqlHost} onChange={e => setMssqlHost(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Database</Label>
+                  <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mssqlDb} onChange={e => setMssqlDb(e.target.value)} />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Agent Token</Label>
-                <Input name="agent_token" type="password" placeholder="Token do agente" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_token as string) || ''} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Usuário</Label>
+                  <Input name="db_username" required className="bg-secondary border-border" value={mssqlUser} onChange={e => setMssqlUser(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Senha</Label>
+                  <Input name="db_password" type="password" required className="bg-secondary border-border" value={mssqlPass} onChange={e => setMssqlPass(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" name="db_trust_cert" id="db_trust_cert" className="rounded border-border" defaultChecked={!!initialConfig?.trust_server_certificate} />
+                <Label htmlFor="db_trust_cert" className="text-xs">Trust Server Certificate</Label>
+              </div>
+              <div className="space-y-2 pt-2 border-t border-border">
+                <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — necessário quando firewall bloqueia conexão direta)</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Agent URL</Label>
+                    <Input name="agent_url" placeholder="http://212.47.72.193:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Agent Token</Label>
+                    <Input name="agent_token" type="password" placeholder="Token do agente" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_token as string) || ''} />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
       <p className="text-xs text-muted-foreground">Coleta: CPU, Memória, Conexões, Storage e Top Waits via DMVs.</p>
     </div>
@@ -961,6 +1069,8 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
   const [airflowUrl, setAirflowUrl] = useState((initialConfig?.base_url as string) || '');
   const [airflowUser, setAirflowUser] = useState((initialConfig?.username as string) || '');
   const [airflowPass, setAirflowPass] = useState((initialConfig?.password as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -969,36 +1079,58 @@ function AirflowFields({ initialConfig }: { initialConfig?: Record<string, unkno
       setAirflowUser(c.username || '');
       setAirflowPass(c.password || '');
       if (c.auth_type) setAuthType(c.auth_type);
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="airflow" onSelect={handleCredential} />
-      <div className="space-y-2">
-        <Label>Versão / Autenticação</Label>
-        <Select name="airflow_auth_type" defaultValue={authType} onValueChange={setAuthType}>
-          <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="jwt">Airflow 3.x (JWT automático)</SelectItem>
-            <SelectItem value="basic">Airflow 2.x (Basic Auth)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>URL do Airflow</Label>
-        <Input name="airflow_url" required value={airflowUrl} onChange={e => setAirflowUrl(e.target.value)} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label>Usuário</Label>
-          <Input name="airflow_username" required value={airflowUser} onChange={e => setAirflowUser(e.target.value)} placeholder="admin" className="bg-secondary border-border" />
-        </div>
-        <div className="space-y-2">
-          <Label>Senha</Label>
-          <Input name="airflow_password" type="password" required value={airflowPass} onChange={e => setAirflowPass(e.target.value)} placeholder="••••••••" className="bg-secondary border-border" />
-        </div>
-      </div>
+      <CredentialSelector checkType="airflow" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — URL, usuário e senha herdados automaticamente.
+            </p>
+          </div>
+          <input type="hidden" name="airflow_auth_type" value={authType} />
+          <input type="hidden" name="airflow_url" value={airflowUrl} />
+          <input type="hidden" name="airflow_username" value={airflowUser} />
+          <input type="hidden" name="airflow_password" value={airflowPass} />
+        </>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <Label>Versão / Autenticação</Label>
+            <Select name="airflow_auth_type" defaultValue={authType} onValueChange={setAuthType}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="jwt">Airflow 3.x (JWT automático)</SelectItem>
+                <SelectItem value="basic">Airflow 2.x (Basic Auth)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>URL do Airflow</Label>
+            <Input name="airflow_url" required value={airflowUrl} onChange={e => setAirflowUrl(e.target.value)} placeholder="http://seu-airflow:8080" className="bg-secondary border-border" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Usuário</Label>
+              <Input name="airflow_username" required value={airflowUser} onChange={e => setAirflowUser(e.target.value)} placeholder="admin" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Senha</Label>
+              <Input name="airflow_password" type="password" required value={airflowPass} onChange={e => setAirflowPass(e.target.value)} placeholder="••••••••" className="bg-secondary border-border" />
+            </div>
+          </div>
+        </>
+      )}
       {authType === 'jwt' ? (
         <div className="rounded-md border border-border bg-secondary/30 p-3">
           <p className="text-xs text-muted-foreground">
@@ -1035,7 +1167,7 @@ function LambdaFields({ initialConfig }: { initialConfig?: Record<string, unknow
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="lambda" onSelect={handleCredential} />
+      <CredentialSelector checkType="lambda" onSelect={handleCredential} initialCredentialId={credentialId} />
       <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -1068,7 +1200,7 @@ function EcsFields({ initialConfig }: { initialConfig?: Record<string, unknown> 
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="ecs" onSelect={handleCredential} />
+      <CredentialSelector checkType="ecs" onSelect={handleCredential} initialCredentialId={credentialId} />
       <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -1105,7 +1237,7 @@ function CloudWatchAlarmsFields({ initialConfig }: { initialConfig?: Record<stri
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="cloudwatch_alarms" onSelect={handleCredential} />
+      <CredentialSelector checkType="cloudwatch_alarms" onSelect={handleCredential} initialCredentialId={credentialId} />
       <input type="hidden" name="credential_id" value={credentialId} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -1219,6 +1351,8 @@ function DiscoveredList({ items, selected, onToggle }: {
 function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
   const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
   const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
   const initServices = Array.isArray(initialConfig?.services) ? (initialConfig.services as string[]) : [];
   const [selected, setSelected] = useState<Set<string>>(new Set(initServices));
@@ -1228,6 +1362,11 @@ function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unk
       const c = cred.config as Record<string, string>;
       setAgentUrl(c.agent_url || '');
       setAgentToken(c.token || '');
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
@@ -1244,20 +1383,34 @@ function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unk
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="systemctl" onSelect={handleCredential} />
-      <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-        <p className="text-xs text-foreground">
-          🔗 <strong>Agente Unificado</strong> — A mesma URL monitora serviços systemd, containers Docker e métricas do servidor automaticamente.
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label>URL do Agente</Label>
-        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <Label>Token de Autenticação (opcional)</Label>
-        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
-      </div>
+      <CredentialSelector checkType="systemctl" onSelect={handleCredential} initialCredentialId={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — URL e token do agente herdados automaticamente.
+            </p>
+          </div>
+          <input type="hidden" name="agent_url" value={agentUrl} />
+          <input type="hidden" name="agent_token" value={agentToken} />
+        </>
+      ) : (
+        <>
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Agente Unificado</strong> — A mesma URL monitora serviços systemd, containers Docker e métricas do servidor automaticamente.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>URL do Agente</Label>
+            <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Token de Autenticação (opcional)</Label>
+            <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
+          </div>
+        </>
+      )}
 
       <DiscoverButton agentUrl={agentUrl} token={agentToken} type="systemctl" onDiscovered={(items) => {
         setDiscovered(items);
@@ -1274,7 +1427,8 @@ function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unk
         }} />
       </div>
       <input type="hidden" name="agent_endpoint" value="/systemctl" />
-      <AgentInstallInstructions token={agentToken} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {!credentialSelected && <AgentInstallInstructions token={agentToken} />}
     </div>
   );
 }
@@ -1282,6 +1436,8 @@ function SystemctlFields({ initialConfig }: { initialConfig?: Record<string, unk
 function ContainerFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
   const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
   const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
   const [discovered, setDiscovered] = useState<{ name: string; description?: string }[]>([]);
 
   const handleCredential = (cred: Credential | null) => {
@@ -1289,25 +1445,44 @@ function ContainerFields({ initialConfig }: { initialConfig?: Record<string, unk
       const c = cred.config as Record<string, string>;
       setAgentUrl(c.agent_url || '');
       setAgentToken(c.token || '');
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="container" onSelect={handleCredential} />
-      <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-        <p className="text-xs text-foreground">
-          🔗 <strong>Agente Unificado</strong> — Containers são descobertos automaticamente.
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label>URL do Agente</Label>
-        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <Label>Token de Autenticação (opcional)</Label>
-        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
-      </div>
+      <CredentialSelector checkType="container" initialCredentialId={credentialId} onSelect={handleCredential} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — URL e token do agente herdados automaticamente.
+            </p>
+          </div>
+          <input type="hidden" name="agent_url" value={agentUrl} />
+          <input type="hidden" name="agent_token" value={agentToken} />
+        </>
+      ) : (
+        <>
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Agente Unificado</strong> — Containers são descobertos automaticamente.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>URL do Agente</Label>
+            <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Token de Autenticação (opcional)</Label>
+            <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
+          </div>
+        </>
+      )}
 
       <DiscoverButton agentUrl={agentUrl} token={agentToken} type="container" onDiscovered={setDiscovered} />
 
@@ -1324,7 +1499,8 @@ function ContainerFields({ initialConfig }: { initialConfig?: Record<string, unk
       )}
 
       <input type="hidden" name="agent_endpoint" value="/containers" />
-      <AgentInstallInstructions token={agentToken} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {!credentialSelected && <AgentInstallInstructions token={agentToken} />}
     </div>
   );
 }
@@ -1332,32 +1508,54 @@ function ContainerFields({ initialConfig }: { initialConfig?: Record<string, unk
 function ServerFields({ initialConfig }: { initialConfig?: Record<string, unknown> }) {
   const [agentUrl, setAgentUrl] = useState((initialConfig?.agent_url as string) || '');
   const [agentToken, setAgentToken] = useState((initialConfig?.token as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
       const c = cred.config as Record<string, string>;
       setAgentUrl(c.agent_url || '');
       setAgentToken(c.token || '');
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="server" onSelect={handleCredential} />
-      <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-        <p className="text-xs text-foreground">
-          📊 <strong>Métricas do Servidor</strong> — Monitora CPU, RAM, Swap, Disco, Rede, Load Average e Top Processos automaticamente.
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label>URL do Agente</Label>
-        <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
-      </div>
-      <div className="space-y-2">
-        <Label>Token de Autenticação (opcional)</Label>
-        <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
-      </div>
-      <AgentInstallInstructions token={agentToken} />
+      <CredentialSelector checkType="server" initialCredentialId={credentialId} onSelect={handleCredential} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — URL e token do agente herdados automaticamente.
+            </p>
+          </div>
+          <input type="hidden" name="agent_url" value={agentUrl} />
+          <input type="hidden" name="agent_token" value={agentToken} />
+        </>
+      ) : (
+        <>
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs text-foreground">
+              📊 <strong>Métricas do Servidor</strong> — Monitora CPU, RAM, Swap, Disco, Rede, Load Average e Top Processos automaticamente.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>URL do Agente</Label>
+            <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border font-mono text-xs" value={agentUrl} onChange={e => setAgentUrl(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Token de Autenticação (opcional)</Label>
+            <Input name="agent_token" type="password" placeholder="••••••••" className="bg-secondary border-border font-mono text-xs" value={agentToken} onChange={e => setAgentToken(e.target.value)} />
+          </div>
+        </>
+      )}
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {!credentialSelected && <AgentInstallInstructions token={agentToken} />}
     </div>
   );
 }
@@ -1366,6 +1564,8 @@ function SupabaseProjectFields({ initialConfig }: { initialConfig?: Record<strin
   const [projectUrl, setProjectUrl] = useState((initialConfig?.project_url as string) || '');
   const [anonKey, setAnonKey] = useState((initialConfig?.anon_key as string) || '');
   const [serviceRoleKey, setServiceRoleKey] = useState((initialConfig?.service_role_key as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
 
   const handleCredential = (cred: Credential | null) => {
     if (cred) {
@@ -1373,32 +1573,53 @@ function SupabaseProjectFields({ initialConfig }: { initialConfig?: Record<strin
       setProjectUrl(c.project_url || '');
       setAnonKey(c.anon_key || '');
       setServiceRoleKey(c.service_role_key || '');
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
     }
   };
 
   return (
     <div className="space-y-3">
-      <CredentialSelector checkType="supabase_project" onSelect={handleCredential} />
-      <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
-        <p className="text-xs text-foreground">
-          🟢 <strong>Monitoramento Supabase Completo</strong> — Verifica REST API, Auth, Realtime, Storage, Edge Functions e Database (conexões, cache hit, queries ativas, tamanho do banco).
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label>URL do Projeto</Label>
-        <Input name="sb_project_url" required placeholder="https://xyzcompany.supabase.co" className="bg-secondary border-border font-mono text-xs" value={projectUrl} onChange={e => setProjectUrl(e.target.value)} />
-        <p className="text-[10px] text-muted-foreground">Ex: https://seu-project-ref.supabase.co</p>
-      </div>
-      <div className="space-y-2">
-        <Label>Anon Key (publishable)</Label>
-        <Input name="sb_anon_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={anonKey} onChange={e => setAnonKey(e.target.value)} />
-        <p className="text-[10px] text-muted-foreground">Usada para verificar REST API, Realtime e Storage</p>
-      </div>
-      <div className="space-y-2">
-        <Label>Service Role Key</Label>
-        <Input name="sb_service_role_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={serviceRoleKey} onChange={e => setServiceRoleKey(e.target.value)} />
-        <p className="text-[10px] text-muted-foreground">Usada para verificar Database e Edge Functions (nunca exposta no client)</p>
-      </div>
+      <CredentialSelector checkType="supabase_project" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — URL do projeto e chaves herdadas automaticamente.
+            </p>
+          </div>
+          <input type="hidden" name="sb_project_url" value={projectUrl} />
+          <input type="hidden" name="sb_anon_key" value={anonKey} />
+          <input type="hidden" name="sb_service_role_key" value={serviceRoleKey} />
+        </>
+      ) : (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🟢 <strong>Monitoramento Supabase Completo</strong> — Verifica REST API, Auth, Realtime, Storage, Edge Functions e Database (conexões, cache hit, queries ativas, tamanho do banco).
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>URL do Projeto</Label>
+            <Input name="sb_project_url" required placeholder="https://xyzcompany.supabase.co" className="bg-secondary border-border font-mono text-xs" value={projectUrl} onChange={e => setProjectUrl(e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">Ex: https://seu-project-ref.supabase.co</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Anon Key (publishable)</Label>
+            <Input name="sb_anon_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={anonKey} onChange={e => setAnonKey(e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">Usada para verificar REST API, Realtime e Storage</p>
+          </div>
+          <div className="space-y-2">
+            <Label>Service Role Key</Label>
+            <Input name="sb_service_role_key" required type="password" placeholder="eyJhbGciOi..." className="bg-secondary border-border font-mono text-xs" value={serviceRoleKey} onChange={e => setServiceRoleKey(e.target.value)} />
+            <p className="text-[10px] text-muted-foreground">Usada para verificar Database e Edge Functions (nunca exposta no client)</p>
+          </div>
+        </>
+      )}
       <div className="space-y-2">
         <Label>Edge Function para Teste (opcional)</Label>
         <Input name="sb_test_function" placeholder="health-check" className="bg-secondary border-border font-mono text-xs" defaultValue={(initialConfig?.test_function as string) || ''} />

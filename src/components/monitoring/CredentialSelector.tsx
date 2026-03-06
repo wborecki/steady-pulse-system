@@ -7,9 +7,10 @@ import { Link } from 'react-router-dom';
 interface CredentialSelectorProps {
   checkType: string;
   onSelect: (credential: Credential | null) => void;
+  initialCredentialId?: string;
 }
 
-export function CredentialSelector({ checkType, onSelect }: CredentialSelectorProps) {
+export function CredentialSelector({ checkType, onSelect, initialCredentialId }: CredentialSelectorProps) {
   const { data: credentials, isLoading } = useCredentialsByCheckType(checkType);
 
   if (!credentials?.length && !isLoading) {
@@ -31,6 +32,7 @@ export function CredentialSelector({ checkType, onSelect }: CredentialSelectorPr
         <Label className="text-xs font-medium">Usar credencial salva</Label>
       </div>
       <Select
+        defaultValue={initialCredentialId || undefined}
         onValueChange={(value) => {
           if (value === '__none__') {
             onSelect(null);

@@ -40,6 +40,7 @@ const Reports = lazyWithRetry(() => import("./pages/Reports"));
 const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
 const Documentation = lazyWithRetry(() => import("./pages/Documentation"));
 const Connections = lazyWithRetry(() => import("./pages/Connections"));
+const TerminalPage = lazyWithRetry(() => import("./pages/Terminal"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -94,6 +95,7 @@ const App = () => (
                             <Route path="/reports" element={<Reports />} />
                             <Route path="/settings" element={<SettingsPage />} />
                             <Route path="/connections" element={<Connections />} />
+                            <Route path="/terminal" element={<TerminalPage />} />
                             <Route path="/docs" element={<Documentation />} />
                             <Route path="*" element={<NotFound />} />
                           </Routes>

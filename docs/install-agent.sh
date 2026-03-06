@@ -7,10 +7,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/install-agent.sh | sudo bash -s -- --token SEU_TOKEN
 #
 # Opções:
-#   --port PORT       Porta do agente (padrão: 9100)
-#   --token TOKEN     Token de autenticação (recomendado)
-#   --no-docker       Não verificar Docker
-#   --uninstall       Remove o agente completamente
+#   --port PORT           Porta do agente (padrão: 9100)
+#   --token TOKEN         Token de autenticação (recomendado)
+#   --allowed-ips IPs     IPs/CIDRs permitidos (ex: 1.2.3.4,10.0.0.0/24)
+#   --setup-ufw           Configura UFW para permitir apenas IPs listados
+#   --no-docker           Não verificar Docker
+#   --uninstall           Remove o agente completamente
 #
 # =============================================================================
 
@@ -25,6 +27,8 @@ NC='\033[0m'
 
 AGENT_PORT=9100
 AGENT_TOKEN=""
+AGENT_ALLOWED_IPS=""
+SETUP_UFW=false
 CHECK_DOCKER=true
 UNINSTALL=false
 INSTALL_DIR="/opt/monitoring-agent"
@@ -41,10 +45,12 @@ info()  { echo -e "${BLUE}[i]${NC} $1"; }
 # ---------------------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --port)      AGENT_PORT="$2"; shift 2 ;;
-    --token)     AGENT_TOKEN="$2"; shift 2 ;;
-    --no-docker) CHECK_DOCKER=false; shift ;;
-    --uninstall) UNINSTALL=true; shift ;;
+    --port)        AGENT_PORT="$2"; shift 2 ;;
+    --token)       AGENT_TOKEN="$2"; shift 2 ;;
+    --allowed-ips) AGENT_ALLOWED_IPS="$2"; shift 2 ;;
+    --setup-ufw)   SETUP_UFW=true; shift ;;
+    --no-docker)   CHECK_DOCKER=false; shift ;;
+    --uninstall)   UNINSTALL=true; shift ;;
     *) err "Opção desconhecida: $1"; exit 1 ;;
   esac
 done
@@ -146,6 +152,11 @@ if [ -n "$AGENT_TOKEN" ]; then
   ENV_LINE="Environment=AGENT_TOKEN=${AGENT_TOKEN}"
 fi
 
+ENV_LINE_IPS=""
+if [ -n "$AGENT_ALLOWED_IPS" ]; then
+  ENV_LINE_IPS="Environment=AGENT_ALLOWED_IPS=${AGENT_ALLOWED_IPS}"
+fi
+
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
 Description=Monitoring Agent (porta ${AGENT_PORT})
@@ -157,6 +168,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/bin/python3 ${INSTALL_DIR}/monitoring-agent.py --port ${AGENT_PORT}
 ${ENV_LINE}
+${ENV_LINE_IPS}
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -221,7 +233,47 @@ if [ -n "$AGENT_TOKEN" ]; then
 else
   echo -e "  ⚠️  Token:     ${YELLOW}não configurado (recomendado para produção)${NC}"
 fi
+if [ -n "$AGENT_ALLOWED_IPS" ]; then
+  echo -e "  🛡️  IPs:       ${AGENT_ALLOWED_IPS}"
+fi
 echo ""
+
+# ---------------------------------------------------------------------------
+# UFW Firewall (optional)
+# ---------------------------------------------------------------------------
+if [ "$SETUP_UFW" = true ]; then
+  if command -v ufw &>/dev/null; then
+    info "Configurando UFW firewall..."
+    # Allow SSH first to not lock ourselves out
+    ufw allow ssh >/dev/null 2>&1 || true
+
+    if [ -n "$AGENT_ALLOWED_IPS" ]; then
+      # Allow each IP/CIDR to the agent port
+      IFS=',' read -ra IP_ARRAY <<< "$AGENT_ALLOWED_IPS"
+      for ip in "${IP_ARRAY[@]}"; do
+        ip=$(echo "$ip" | xargs)  # trim
+        ufw allow from "$ip" to any port "$AGENT_PORT" proto tcp >/dev/null 2>&1
+        log "UFW: permitido ${ip} -> porta ${AGENT_PORT}"
+      done
+      # Also allow localhost
+      ufw allow from 127.0.0.1 to any port "$AGENT_PORT" proto tcp >/dev/null 2>&1
+      # Deny all other access to agent port
+      ufw deny "$AGENT_PORT" >/dev/null 2>&1
+      log "UFW: bloqueado acesso geral à porta ${AGENT_PORT}"
+    else
+      warn "--allowed-ips não definido. UFW não restringirá a porta ${AGENT_PORT}."
+      warn "Uso: --allowed-ips 1.2.3.4,5.6.7.8 --setup-ufw"
+    fi
+
+    # Enable UFW if not already
+    ufw --force enable >/dev/null 2>&1
+    log "UFW ativado"
+    ufw status | grep "$AGENT_PORT" || true
+  else
+    warn "UFW não encontrado. Instale com: apt install ufw"
+  fi
+fi
+
 echo -e "  ${BLUE}Endpoints disponíveis:${NC}"
 echo -e "    GET  /health      — Status do agente"
 echo -e "    POST /systemctl   — Status de serviços systemd"

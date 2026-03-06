@@ -6,11 +6,48 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function buildPgConnStr(c: Record<string, unknown>): string {
+  const host = c.host as string;
+  if (!host) return "";
+  const port = c.port || "5432";
+  const db = c.database || "postgres";
+  const user = c.username || "postgres";
+  const pass = c.password ? `:${encodeURIComponent(c.password as string)}` : "";
+  const ssl = c.sslmode || c.ssl_mode || "prefer";
+  return `postgresql://${user}${pass}@${host}:${port}/${db}?sslmode=${ssl}`;
+}
+
+async function collectViaAgent(agentUrl: string, agentToken: string, config: Record<string, unknown>) {
+  const url = agentUrl.replace(/\/$/, "");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (agentToken) headers["Authorization"] = `Bearer ${agentToken}`;
+
+  const payload: Record<string, unknown> = {};
+  if (config.connection_string) payload.connection_string = config.connection_string;
+  if (config.host) payload.host = config.host;
+  if (config.port) payload.port = config.port;
+  if (config.database) payload.database = config.database;
+  if (config.username) payload.username = config.username;
+  if (config.password) payload.password = config.password;
+  if (config.sslmode) payload.sslmode = config.sslmode;
+
+  const start = Date.now();
+  const res = await fetch(`${url}/postgresql`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const responseTime = Date.now() - start;
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || data.message || "Agent relay failed");
+  return { ...data.metrics, response_time: responseTime };
+}
+
 async function collectPostgresMetrics(config: Record<string, unknown>) {
   const { default: pg } = await import("npm:pg@8");
   
-  const connectionString = config.connection_string as string;
-  if (!connectionString) throw new Error("PostgreSQL connection_string not configured");
+  const connectionString = (config.connection_string as string) || buildPgConnStr(config);
+  if (!connectionString) throw new Error("PostgreSQL connection_string ou host não configurado");
 
   const client = new pg.Client({ connectionString, ssl: { rejectUnauthorized: false } });
   const start = Date.now();
@@ -131,7 +168,50 @@ Deno.serve(async (req) => {
       } catch { /* no body */ }
     }
 
-    const metrics = await collectPostgresMetrics(config);
+    // Resolve credential_id if present
+    if (config.credential_id) {
+      const { data: cred } = await supabase
+        .from("credentials")
+        .select("config")
+        .eq("id", config.credential_id)
+        .single();
+      if (cred?.config) {
+        const credConfig = cred.config as Record<string, unknown>;
+        // Merge credential config (connection details) under the service config
+        config = { ...credConfig, ...config };
+      }
+    }
+
+    // Agent relay support
+    const agentUrl = ((config.agent_url as string) || "").trim();
+    const agentToken = ((config.agent_token || config.token) as string || "").trim();
+
+    let metrics;
+    if (agentUrl) {
+      const agentData = await collectViaAgent(agentUrl, agentToken, config);
+      // Normalize agent response to match direct metrics format
+      const conn = agentData.connections || {};
+      const cacheHit = parseFloat(agentData.cache_hit_ratio) || 0;
+
+      const supabaseForRules = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "postgresql").single();
+      const wr = (ruleRow?.warning_rules ?? { cache_hit_lt: 80, active_connections_gt: 50 }) as Record<string, number>;
+
+      let status: "online" | "warning" | "offline" = "online";
+      if (cacheHit < (wr.cache_hit_lt ?? 80) || (conn.active || 0) > (wr.active_connections_gt ?? 50)) status = "warning";
+
+      metrics = {
+        status,
+        response_time: agentData.response_time || 0,
+        cpu: Math.min((conn.active || 0) / Math.max((conn.total || 1), 1) * 100, 100),
+        memory: cacheHit,
+        disk: 0,
+        details: agentData,
+        error_message: null,
+      };
+    } else {
+      metrics = await collectPostgresMetrics(config);
+    }
 
     if (serviceId) {
       await supabase.from("health_checks").insert({

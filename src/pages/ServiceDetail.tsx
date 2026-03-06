@@ -528,7 +528,7 @@ const ServiceDetail = () => {
   const config = (service.check_config || {}) as Record<string, unknown>;
 
   return (
-    <div className="p-6 space-y-6 grid-bg min-h-screen">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6 grid-bg min-h-screen">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="self-start">

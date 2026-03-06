@@ -7,12 +7,19 @@ import "./index.css";
 
 // Inicializa plugins nativos do Capacitor quando rodando como app
 if (Capacitor.isNativePlatform()) {
-  // Marca o HTML para CSS saber que estamos em app nativo
-  document.documentElement.classList.add('native-app');
-
   StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
   StatusBar.setBackgroundColor({ color: '#0a0a0a' }).catch(() => {});
-  StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+
+  if (Capacitor.getPlatform() === 'ios') {
+    // iOS: overlay + safe-area CSS para compensar notch/dynamic island
+    document.documentElement.classList.add('native-app');
+    StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+  } else {
+    // Android: não fazer overlay — o sistema já posiciona a WebView abaixo
+    // da barra de status, evitando corte no topo
+    StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
+  }
+
   SplashScreen.hide().catch(() => {});
 }
 

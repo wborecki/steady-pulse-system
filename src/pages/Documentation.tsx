@@ -93,7 +93,7 @@ const Documentation = () => {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-screen grid-bg">
       {/* Left TOC sidebar */}
       <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border">
         <ScrollArea className="h-[calc(100vh-4rem)]">

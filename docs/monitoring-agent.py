@@ -3,11 +3,23 @@
 Monitoring Agent — lightweight HTTP server for systemctl, Docker & server metrics.
 
 Usage:
-    python3 monitoring-agent.py [--port 9100] [--token YOUR_SECRET_TOKEN]
+    python3 monitoring-agent.py [--port 9100] [--token YOUR_SECRET_TOKEN] [--allowed-ips 1.2.3.4,5.6.7.8]
 
     Or via environment variables:
         AGENT_PORT=9100
         AGENT_TOKEN=your_secret_token
+        AGENT_ALLOWED_IPS=1.2.3.4,5.6.7.8
+
+Security:
+    --token          Required. Authenticates callers via Bearer token.
+    --allowed-ips    Optional. Comma-separated IPs that can connect.
+                     If not set, any IP with a valid token can connect.
+                     Supabase Edge Function IPs vary; use with caution.
+
+    Recommended: combine with UFW firewall for defense in depth:
+        sudo ufw allow from <SUPABASE_IP> to any port 9100
+        sudo ufw deny 9100
+        sudo ufw enable
 
 Endpoints:
     POST /systemctl     — returns status of specified systemd services
@@ -27,6 +39,7 @@ Install as systemd service:
 
 import argparse
 import http.server
+import ipaddress
 import json
 import os
 import socket
@@ -38,7 +51,7 @@ import urllib.request
 # Configuration
 # ---------------------------------------------------------------------------
 
-AGENT_VERSION = "2.3.0"
+AGENT_VERSION = "2.5.0"
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/monitoring-agent.py"
 
 
@@ -46,10 +59,29 @@ def get_config():
     parser = argparse.ArgumentParser(description="Monitoring Agent")
     parser.add_argument("--port", type=int, default=int(os.environ.get("AGENT_PORT", "9100")))
     parser.add_argument("--token", type=str, default=os.environ.get("AGENT_TOKEN", ""))
+    parser.add_argument("--allowed-ips", type=str, default=os.environ.get("AGENT_ALLOWED_IPS", ""),
+                        help="Comma-separated list of IPs or CIDR ranges allowed to connect. Empty = allow all.")
     return parser.parse_args()
 
 
 CONFIG = get_config()
+
+
+def parse_allowed_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """Parse comma-separated IPs/CIDRs into network objects."""
+    networks = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            print(f"⚠️  Invalid IP/CIDR in allowed-ips: {entry!r} — skipping")
+    return networks
+
+
+ALLOWED_NETWORKS = parse_allowed_networks(CONFIG.allowed_ips)
 
 # ---------------------------------------------------------------------------
 # Server metrics helpers
@@ -781,6 +813,155 @@ def check_mssql(config: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Remote exec helpers
+# ---------------------------------------------------------------------------
+
+# Commands that are allowed to run via /exec endpoint.
+# Each entry maps a command name to either True (allow any args) or a list of
+# allowed sub-commands / flags.  Only the first token of the user-supplied
+# command is checked against this set, so "ls -la /tmp" passes because "ls"
+# is in the allow-list.
+ALLOWED_COMMANDS: dict[str, bool] = {
+    # Navigation / listing
+    "ls": True, "cat": True, "head": True, "tail": True,
+    "wc": True, "du": True, "df": True, "stat": True, "file": True,
+    "tree": True, "realpath": True, "readlink": True, "basename": True,
+    "dirname": True, "pwd": True, "whoami": True, "id": True, "date": True,
+    # Text processing
+    "grep": True, "awk": True, "sort": True, "uniq": True,
+    "cut": True, "tr": True, "diff": True, "comm": True,
+    # System info
+    "uname": True, "hostname": True, "uptime": True, "free": True,
+    "top": True, "htop": True, "vmstat": True, "iostat": True,
+    "lscpu": True, "lsblk": True, "lsmem": True, "nproc": True,
+    "arch": True, "mount": True, "lsof": True, "ss": True,
+    "netstat": True, "ip": True, "ifconfig": True, "route": True,
+    # Processes
+    "ps": True, "pgrep": True, "pidof": True,
+    # Systemd (restricted subcommands checked separately below)
+    "systemctl": True, "journalctl": True,
+    # Docker (restricted subcommands checked separately below)
+    "docker": True, "docker-compose": True,
+    # Logs
+    "dmesg": True, "last": True, "lastlog": True,
+    # Network diagnostics (read-only)
+    "ping": True, "traceroute": True, "dig": True, "nslookup": True,
+    # Package info (read-only)
+    "dpkg": True, "rpm": True,
+    # Misc
+    "echo": True, "env": True, "printenv": True, "which": True,
+    "type": True, "whereis": True,
+}
+
+# Tokens / patterns that are NEVER allowed anywhere in the command string,
+# to mitigate chaining / redirect injection.
+BLOCKED_PATTERNS = [
+    "&&", "||", ">>", ">", "|", ";", "`", "$(", "${",
+    "\n", "\r", "\x00",
+    "rm ", "rm\t", "rmdir", "mkfs", "dd ", "shred",
+    "chmod", "chown", "chgrp",
+    "shutdown", "reboot", "poweroff", "halt", "init ",
+    "kill ", "killall", "pkill",
+    "useradd", "userdel", "usermod", "passwd", "adduser",
+    "iptables", "ufw", "firewall",
+    "mount ", "umount",
+    "mkfs", "fdisk", "parted",
+    "crontab", "at ",
+    "/dev/sd", "/dev/null",
+    "-exec", "-delete", "-execdir",  # find dangerous flags
+    " -i ", " -i\t",  # sed in-place editing
+    "curl ", "wget ",  # SSRF risk
+    "python", "node ", "perl ", "ruby ",  # arbitrary code execution
+    "pip ", "pip3 ", "npm ", "apt ", "yum ",  # package managers
+]
+
+# Subcommands allowed for systemctl (includes restart/start/stop for service management)
+SYSTEMCTL_ALLOWED_SUBCOMMANDS = {
+    "status", "is-active", "is-enabled", "is-failed",
+    "list-units", "list-unit-files", "show",
+    "restart", "start", "stop", "reload",
+}
+
+# Subcommands allowed for docker (read-only + restart)
+DOCKER_ALLOWED_SUBCOMMANDS = {
+    "ps", "logs", "inspect", "stats", "top", "images",
+    "info", "version", "compose",
+    "restart", "start", "stop",
+}
+
+
+def validate_exec_command(command: str) -> str | None:
+    """Validate a command and return an error message or None if OK."""
+    stripped = command.strip()
+    if not stripped:
+        return "Empty command"
+
+    # Check blocked patterns
+    for pat in BLOCKED_PATTERNS:
+        if pat in stripped:
+            return f"Blocked pattern detected: {pat.strip()!r}"
+
+    # Get first token (the actual binary)
+    tokens = stripped.split()
+    first_token = tokens[0]
+    # Strip path (e.g. /usr/bin/ls -> ls)
+    binary = first_token.rsplit("/", 1)[-1]
+
+    if binary not in ALLOWED_COMMANDS:
+        return f"Command not allowed: {binary!r}. Only read-only diagnostic commands are permitted."
+
+    # Validate systemctl subcommands
+    if binary == "systemctl" and len(tokens) > 1:
+        sub = tokens[1]
+        if sub.startswith("-"):
+            pass  # flags like --no-pager are OK
+        elif sub not in SYSTEMCTL_ALLOWED_SUBCOMMANDS:
+            return f"systemctl subcommand not allowed: {sub!r}. Allowed: {', '.join(sorted(SYSTEMCTL_ALLOWED_SUBCOMMANDS))}"
+
+    # Validate docker subcommands
+    if binary in ("docker", "docker-compose") and len(tokens) > 1:
+        sub = tokens[1]
+        if sub.startswith("-"):
+            pass  # flags like --format are OK
+        elif sub not in DOCKER_ALLOWED_SUBCOMMANDS:
+            return f"docker subcommand not allowed: {sub!r}. Allowed: {', '.join(sorted(DOCKER_ALLOWED_SUBCOMMANDS))}"
+
+    return None
+
+
+def execute_command(command: str, timeout_seconds: int = 30) -> dict:
+    """Execute a validated command and return stdout/stderr."""
+    error = validate_exec_command(command)
+    if error:
+        return {"success": False, "error": error, "exit_code": -1, "stdout": "", "stderr": ""}
+
+    clamped_timeout = min(max(timeout_seconds, 1), 60)
+    try:
+        result = subprocess.run(
+            command.split(),
+            capture_output=True,
+            text=True,
+            timeout=clamped_timeout,
+            env={**os.environ, "LANG": "C.UTF-8"},
+        )
+        # Truncate output to 64 KB to avoid huge payloads
+        max_out = 65536
+        return {
+            "success": result.returncode == 0,
+            "exit_code": result.returncode,
+            "stdout": result.stdout[:max_out],
+            "stderr": result.stderr[:max_out],
+            "truncated": len(result.stdout) > max_out or len(result.stderr) > max_out,
+        }
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": f"Command timed out after {clamped_timeout}s", "exit_code": -1, "stdout": "", "stderr": ""}
+    except FileNotFoundError:
+        return {"success": False, "error": f"Command not found: {command.split()[0]!r}", "exit_code": -1, "stdout": "", "stderr": ""}
+    except Exception as e:
+        return {"success": False, "error": str(e), "exit_code": -1, "stdout": "", "stderr": ""}
+
+
+# ---------------------------------------------------------------------------
 # Self-update helpers
 # ---------------------------------------------------------------------------
 
@@ -859,7 +1040,25 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def check_ip(self) -> bool:
+        """Check if the client IP is in the allowed list."""
+        if not ALLOWED_NETWORKS:
+            return True  # no restriction configured
+        client_ip_str = self.client_address[0]
+        try:
+            client_ip = ipaddress.ip_address(client_ip_str)
+        except ValueError:
+            self.send_json({"error": f"invalid client IP: {client_ip_str}"}, 403)
+            return False
+        for net in ALLOWED_NETWORKS:
+            if client_ip in net:
+                return True
+        self.send_json({"error": f"IP {client_ip_str} not allowed"}, 403)
+        return False
+
     def check_auth(self) -> bool:
+        if not self.check_ip():
+            return False
         if not CONFIG.token:
             return True
         token = self.headers.get("Authorization", "").replace("Bearer ", "")
@@ -877,7 +1076,7 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 "status": "ok",
                 "version": AGENT_VERSION,
                 "timestamp": time.time(),
-                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics", "/processes", "/postgresql", "/mssql", "/version", "/update"],
+                "endpoints": ["/health", "/systemctl", "/systemctl/list", "/containers", "/metrics", "/processes", "/postgresql", "/mssql", "/exec", "/version", "/update"],
             })
         elif self.path == "/systemctl/list":
             services = list_systemd_services()
@@ -941,6 +1140,21 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 return
             result = check_mssql(data)
             self.send_json(result, 200 if result.get("success") else 500)
+        elif self.path == "/exec":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length) if content_length > 0 else b"{}"
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_json({"error": "invalid json"}, 400)
+                return
+            command = data.get("command", "").strip()
+            if not command:
+                self.send_json({"error": "'command' is required"}, 400)
+                return
+            timeout_seconds = int(data.get("timeout", 30))
+            result = execute_command(command, timeout_seconds)
+            self.send_json(result, 200 if result.get("success") else 400)
         elif self.path == "/update":
             result = perform_update()
             self.send_json(result, 200 if result.get("success") else 500)
@@ -958,11 +1172,15 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
 def main():
     server = http.server.HTTPServer(("0.0.0.0", CONFIG.port), AgentHandler)
     print(f"🚀 Monitoring Agent v{AGENT_VERSION} running on port {CONFIG.port}")
-    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics, /processes, /postgresql, /mssql, /version, /update")
+    print(f"📡 Endpoints: /health, /systemctl, /containers, /metrics, /processes, /postgresql, /mssql, /exec, /version, /update")
     if CONFIG.token:
         print(f"🔒 Authentication enabled (token required)")
     else:
         print(f"⚠️  No authentication token set. Use --token or AGENT_TOKEN env var.")
+    if ALLOWED_NETWORKS:
+        print(f"🛡️  IP allowlist active: {', '.join(str(n) for n in ALLOWED_NETWORKS)}")
+    else:
+        print(f"🌐 No IP restriction (any IP with valid token can connect)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

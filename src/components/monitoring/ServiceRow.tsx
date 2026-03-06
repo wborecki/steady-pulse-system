@@ -142,6 +142,13 @@ const statusBorderColor: Record<string, string> = {
   maintenance: 'border-l-gray-400',
 };
 
+const statusDotColor: Record<string, string> = {
+  online: 'bg-green-500',
+  offline: 'bg-red-500',
+  warning: 'bg-yellow-500',
+  maintenance: 'bg-gray-400',
+};
+
 export function ServiceRow({ service, onClick }: ServiceRowProps) {
   const Icon = categoryIconMap[service.category] || Server;
   const timeSince = getTimeSinceCheck(service.last_check);
@@ -149,12 +156,17 @@ export function ServiceRow({ service, onClick }: ServiceRowProps) {
 
   return (
     <Card
-      className={`glass-card p-4 cursor-pointer hover:border-primary/40 transition-all hover:bg-card/90 border-l-[3px] ${statusBorderColor[service.status] || 'border-l-gray-400'}`}
+      className={`glass-card p-4 cursor-pointer hover:border-primary/40 transition-all hover:bg-card/90 border-l-4 ${statusBorderColor[service.status] || 'border-l-gray-400'}`}
       onClick={() => onClick?.(service)}
     >
       <div className="flex items-center gap-4">
-        <div className="p-2 rounded-lg bg-secondary">
+        <div className="relative p-2 rounded-lg bg-secondary flex-shrink-0">
           <Icon className="h-4 w-4 text-primary" />
+          <span className={`absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card ${statusDotColor[service.status] || 'bg-gray-400'}`}>
+            {service.status === 'online' && (
+              <span className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75" />
+            )}
+          </span>
         </div>
 
         <div className="flex-1 min-w-0">

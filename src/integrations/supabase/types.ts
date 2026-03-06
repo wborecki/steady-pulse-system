@@ -96,6 +96,86 @@ export type Database = {
           },
         ]
       }
+      command_history: {
+        Row: {
+          id: string
+          user_id: string
+          service_id: string
+          command: string
+          exit_code: number
+          stdout: string
+          stderr: string
+          success: boolean
+          executed_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          service_id: string
+          command: string
+          exit_code?: number
+          stdout?: string
+          stderr?: string
+          success?: boolean
+          executed_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          service_id?: string
+          command?: string
+          exit_code?: number
+          stdout?: string
+          stderr?: string
+          success?: boolean
+          executed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "command_history_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      command_snippets: {
+        Row: {
+          id: string
+          user_id: string | null
+          name: string
+          description: string
+          command: string
+          category: string
+          is_builtin: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          name: string
+          description?: string
+          command: string
+          category?: string
+          is_builtin?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          name?: string
+          description?: string
+          command?: string
+          category?: string
+          is_builtin?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       check_type_status_rules: {
         Row: {
           check_type: string

@@ -1,12 +1,11 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useServices } from '@/hooks/useServices';
 import { PageLoader } from '@/components/PageLoader';
-import { useHealthChecksForPeriod } from '@/hooks/useHealthChecks';
+import { useHealthChecksForPeriod, type ReportHealthCheck } from '@/hooks/useHealthChecks';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusIndicator } from '@/components/monitoring/StatusIndicator';
 import { type ServiceStatus } from '@/data/mockData';
-import { MetricsChart } from '@/components/monitoring/MetricsChart';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { BarChart3, TrendingUp, Timer, ShieldCheck, Download } from 'lucide-react';
@@ -18,86 +17,68 @@ const Reports = () => {
   const { data: services = [] } = useServices();
   const { data: checks = [], isLoading } = useHealthChecksForPeriod(period);
 
-  // Uptime ranking per service
-  const uptimeRanking = useMemo(() => {
-    const map = new Map<string, { online: number; total: number }>();
-    checks.forEach(c => {
-      const entry = map.get(c.service_id) || { online: 0, total: 0 };
-      if (c.status === 'online' || c.status === 'warning') entry.online++;
-      entry.total++;
-      map.set(c.service_id, entry);
-    });
-    return services
-      .map(s => {
-        const stats = map.get(s.id);
-        const uptime = stats && stats.total > 0 ? (stats.online / stats.total) * 100 : 0;
-        return { ...s, calculatedUptime: uptime, totalChecks: stats?.total || 0 };
-      })
-      .sort((a, b) => a.calculatedUptime - b.calculatedUptime);
-  }, [checks, services]);
+  // Group checks by service_id once, then compute all metrics in a single pass
+  const { uptimeRanking, reliabilityMetrics, latencyTrends } = useMemo(() => {
+    // 1) Group checks by service_id (already sorted by checked_at from query)
+    const grouped = new Map<string, ReportHealthCheck[]>();
+    for (const c of checks) {
+      let arr = grouped.get(c.service_id);
+      if (!arr) { arr = []; grouped.set(c.service_id, arr); }
+      arr.push(c);
+    }
 
-  // MTTR & MTBF per service
-  const reliabilityMetrics = useMemo(() => {
-    const result: Record<string, { mttr: number; mtbf: number; incidents: number }> = {};
-    
-    services.forEach(s => {
-      const svcChecks = checks.filter(c => c.service_id === s.id).sort((a, b) => 
-        new Date(a.checked_at).getTime() - new Date(b.checked_at).getTime()
-      );
-      
-      if (svcChecks.length < 2) {
-        result[s.id] = { mttr: 0, mtbf: 0, incidents: 0 };
-        return;
+    // 2) Uptime ranking
+    const ranking = services.map(s => {
+      const svcChecks = grouped.get(s.id);
+      if (!svcChecks || svcChecks.length === 0) return { ...s, calculatedUptime: 0, totalChecks: 0 };
+      let online = 0;
+      for (const c of svcChecks) { if (c.status === 'online' || c.status === 'warning') online++; }
+      return { ...s, calculatedUptime: (online / svcChecks.length) * 100, totalChecks: svcChecks.length };
+    }).sort((a, b) => a.calculatedUptime - b.calculatedUptime);
+
+    // 3) MTTR & MTBF
+    const reliability: Record<string, { mttr: number; mtbf: number; incidents: number }> = {};
+    for (const s of services) {
+      const svcChecks = grouped.get(s.id);
+      if (!svcChecks || svcChecks.length < 2) {
+        reliability[s.id] = { mttr: 0, mtbf: 0, incidents: 0 };
+        continue;
       }
-
-      let incidents = 0;
-      let totalDowntime = 0;
-      let totalUptime = 0;
-      let downStart: number | null = null;
-      let upStart: number | null = null;
-
-      svcChecks.forEach((c, i) => {
+      let incidents = 0, totalDowntime = 0, totalUptime = 0;
+      let downStart: number | null = null, upStart: number | null = null;
+      for (const c of svcChecks) {
         const t = new Date(c.checked_at).getTime();
         if (c.status !== 'online' && c.status !== 'warning') {
           if (downStart === null) {
             downStart = t;
             incidents++;
-            if (upStart !== null) {
-              totalUptime += t - upStart;
-              upStart = null;
-            }
+            if (upStart !== null) { totalUptime += t - upStart; upStart = null; }
           }
         } else {
-          if (downStart !== null) {
-            totalDowntime += t - downStart;
-            downStart = null;
-          }
+          if (downStart !== null) { totalDowntime += t - downStart; downStart = null; }
           if (upStart === null) upStart = t;
         }
-      });
+      }
+      const mttr = incidents > 0 ? totalDowntime / incidents / 60000 : 0;
+      const mtbf = incidents > 1 ? totalUptime / (incidents - 1) / 3600000 : 0;
+      reliability[s.id] = { mttr: Math.round(mttr), mtbf: Math.round(mtbf * 10) / 10, incidents };
+    }
 
-      const mttr = incidents > 0 ? totalDowntime / incidents / 60000 : 0; // minutes
-      const mtbf = incidents > 1 ? totalUptime / (incidents - 1) / 3600000 : 0; // hours
-
-      result[s.id] = { mttr: Math.round(mttr), mtbf: Math.round(mtbf * 10) / 10, incidents };
-    });
-
-    return result;
-  }, [checks, services]);
-
-  // Latency trend per service (avg first half vs second half)
-  const latencyTrends = useMemo(() => {
-    return services.map(s => {
-      const svcChecks = checks.filter(c => c.service_id === s.id);
-      if (svcChecks.length < 4) return { ...s, trend: 0, avgLatency: s.response_time };
-      const mid = Math.floor(svcChecks.length / 2);
-      const firstHalf = svcChecks.slice(0, mid);
-      const secondHalf = svcChecks.slice(mid);
-      const avgFirst = firstHalf.reduce((a, c) => a + (c.response_time ?? 0), 0) / firstHalf.length;
-      const avgSecond = secondHalf.reduce((a, c) => a + (c.response_time ?? 0), 0) / secondHalf.length;
+    // 4) Latency trends
+    const trends = services.map(s => {
+      const svcChecks = grouped.get(s.id);
+      if (!svcChecks || svcChecks.length < 4) return { ...s, trend: 0, avgLatency: s.response_time };
+      const mid = svcChecks.length >> 1;
+      let sumFirst = 0, sumSecond = 0;
+      for (let i = 0; i < mid; i++) sumFirst += svcChecks[i].response_time ?? 0;
+      for (let i = mid; i < svcChecks.length; i++) sumSecond += svcChecks[i].response_time ?? 0;
+      const avgFirst = sumFirst / mid;
+      const avgSecond = sumSecond / (svcChecks.length - mid);
       const trend = avgFirst > 0 ? ((avgSecond - avgFirst) / avgFirst) * 100 : 0;
       return { ...s, trend: Math.round(trend), avgLatency: Math.round(avgSecond) };
     }).sort((a, b) => b.trend - a.trend);
+
+    return { uptimeRanking: ranking, reliabilityMetrics: reliability, latencyTrends: trends };
   }, [checks, services]);
 
   // Format date as YYYY-MM-DD in local timezone
@@ -116,22 +97,25 @@ const Reports = () => {
       days.push(toLocalDay(d));
     }
 
-    return services.map(s => {
-      const svcChecks = checks.filter(c => c.service_id === s.id);
-      const dayMap = new Map<string, { online: number; total: number }>();
-      svcChecks.forEach(c => {
-        const day = toLocalDay(new Date(c.checked_at));
-        const entry = dayMap.get(day) || { online: 0, total: 0 };
-        if (c.status === 'online' || c.status === 'warning') entry.online++;
-        entry.total++;
-        dayMap.set(day, entry);
-      });
+    // Pre-build day map for all checks grouped by service+day in a single pass
+    const svcDayMap = new Map<string, Map<string, { online: number; total: number }>>();
+    for (const c of checks) {
+      let dayMap = svcDayMap.get(c.service_id);
+      if (!dayMap) { dayMap = new Map(); svcDayMap.set(c.service_id, dayMap); }
+      const day = toLocalDay(new Date(c.checked_at));
+      let entry = dayMap.get(day);
+      if (!entry) { entry = { online: 0, total: 0 }; dayMap.set(day, entry); }
+      if (c.status === 'online' || c.status === 'warning') entry.online++;
+      entry.total++;
+    }
 
+    return services.map(s => {
+      const dayMap = svcDayMap.get(s.id);
       return {
         service: s,
         days: days.map(day => {
-          const entry = dayMap.get(day);
-          if (!entry || entry.total === 0) return { day, uptime: -1 }; // no data
+          const entry = dayMap?.get(day);
+          if (!entry || entry.total === 0) return { day, uptime: -1 };
           return { day, uptime: (entry.online / entry.total) * 100 };
         }),
       };

@@ -90,32 +90,39 @@ export function useAllRecentHealthChecks() {
   });
 }
 
+export interface ReportHealthCheck {
+  service_id: string;
+  status: string;
+  response_time: number;
+  checked_at: string;
+}
+
 export function useHealthChecksForPeriod(periodDays: number = 7) {
   const refetchInterval = useRefreshInterval(60000);
   return useQuery({
     queryKey: ['health_checks_period', periodDays],
     queryFn: async () => {
       const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
-      const rows: DbHealthCheck[] = [];
+      const rows: ReportHealthCheck[] = [];
       let from = 0;
       const PAGE = 1000;
-      // Paginate to fetch all rows in the period (Supabase default max is 1000)
       while (true) {
         const { data, error } = await supabase
           .from('health_checks')
-          .select('*')
+          .select('service_id, status, response_time, checked_at')
           .order('checked_at', { ascending: true })
           .gte('checked_at', since)
           .range(from, from + PAGE - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;
-        rows.push(...(data as DbHealthCheck[]));
+        rows.push(...(data as ReportHealthCheck[]));
         if (data.length < PAGE) break;
         from += PAGE;
       }
       return rows;
     },
     refetchInterval,
+    staleTime: 60000,
   });
 }
 
