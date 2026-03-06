@@ -109,6 +109,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Normalize URL — remove trailing slash
+    agentUrl = agentUrl.replace(/\/+$/, "");
+
     // IP allowlist check — uses IPs configured in the credential panel
     if (allowedIPs) {
       const clientIP = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
@@ -166,8 +169,21 @@ Deno.serve(async (req) => {
       result = { success: false, error: `Agente retornou status ${agentRes.status} sem JSON válido`, exit_code: -1, stdout: "", stderr: "" };
     }
 
-    if (!agentRes.ok && !result.error) {
-      result = { ...result, success: false, error: `Agente retornou status ${agentRes.status}` };
+    // Ensure result always has the required fields
+    if (result.success === undefined) result.success = false;
+    if (result.exit_code === undefined) result.exit_code = -1;
+    if (result.stdout === undefined) result.stdout = "";
+    if (result.stderr === undefined) result.stderr = "";
+
+    if (!agentRes.ok) {
+      if (agentRes.status === 404) {
+        result.error = "Rota /exec não encontrada no agente. O agente pode estar desatualizado — atualize para a versão mais recente (v2.5.0+).";
+      } else if (agentRes.status === 401) {
+        result.error = "Agente rejeitou a autenticação (401 Unauthorized). Verifique se o token da credencial está correto.";
+      } else if (!result.error) {
+        result.error = `Agente retornou status ${agentRes.status}`;
+      }
+      result.success = false;
     }
 
     // Log the execution for audit
