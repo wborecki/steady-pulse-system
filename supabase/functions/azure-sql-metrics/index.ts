@@ -54,7 +54,7 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
   const password = ((resolvedConfig.password as string) || Deno.env.get("AZURE_SQL_PASSWORD") || "").trim();
 
   if (!host || !database || !user || !password) {
-    throw new Error("Azure SQL credentials not configured (check_config, credential_id or env vars)");
+    throw new Error("SQL Server credentials not configured (check_config, credential_id or env vars)");
   }
 
   const sqlConfig: sql.config = {
@@ -74,70 +74,211 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
   const pool = await sql.connect(sqlConfig);
 
   try {
-    const resourceStats = await pool.request().query(`
-      SELECT TOP 1
-        avg_cpu_percent,
-        avg_data_io_percent,
-        avg_log_write_percent,
-        avg_memory_usage_percent,
-        max_worker_percent,
-        max_session_percent
-      FROM sys.dm_db_resource_stats
-      ORDER BY end_time DESC
-    `);
+    // --- Try Azure SQL DMV first, fall back to on-prem DMVs ---
+    let cpuPercent = 0;
+    let memoryPercent = 0;
+    let dataIoPercent = 0;
+    let logWritePercent = 0;
+    let maxWorkerPercent = 0;
+    let maxSessionPercent = 0;
+    let isAzure = false;
 
-    const sizeStats = await pool.request().query(`
-      SELECT
-        SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8 / 1024) AS used_mb,
-        SUM(size * 8 / 1024) AS allocated_mb
-      FROM sys.database_files
-      WHERE type_desc = 'ROWS'
-    `);
+    try {
+      const resourceStats = await pool.request().query(`
+        SELECT TOP 1
+          avg_cpu_percent, avg_data_io_percent, avg_log_write_percent,
+          avg_memory_usage_percent, max_worker_percent, max_session_percent
+        FROM sys.dm_db_resource_stats ORDER BY end_time DESC
+      `);
+      const r = resourceStats.recordset[0];
+      if (r) {
+        cpuPercent = r.avg_cpu_percent ?? 0;
+        memoryPercent = r.avg_memory_usage_percent ?? 0;
+        dataIoPercent = r.avg_data_io_percent ?? 0;
+        logWritePercent = r.avg_log_write_percent ?? 0;
+        maxWorkerPercent = r.max_worker_percent ?? 0;
+        maxSessionPercent = r.max_session_percent ?? 0;
+        isAzure = true;
+      }
+    } catch {
+      // Not Azure SQL — use on-prem DMVs
+    }
 
-    const connStats = await pool.request().query(`
-      SELECT COUNT(*) AS active_connections
-      FROM sys.dm_exec_sessions
-      WHERE is_user_process = 1
-        AND status = 'running'
-    `);
+    // On-prem CPU fallback via ring buffers
+    if (!isAzure) {
+      try {
+        const cpuRes = await pool.request().query(`
+          SELECT TOP 1
+            record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS sql_cpu
+          FROM (
+            SELECT CAST(record AS XML) AS record
+            FROM sys.dm_os_ring_buffers
+            WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
+              AND record LIKE N'%<SystemHealth>%'
+          ) AS x
+        `);
+        cpuPercent = cpuRes.recordset[0]?.sql_cpu ?? 0;
+      } catch { /* ring buffers may not be available */ }
+    }
 
-    const sessionStats = await pool.request().query(`
-      SELECT COUNT(*) AS total_sessions
-      FROM sys.dm_exec_sessions
-      WHERE is_user_process = 1
-    `);
+    // On-prem memory fallback
+    let totalPhysMb = 0;
+    let availablePhysMb = 0;
+    let sqlMemoryMb = 0;
+    if (!isAzure) {
+      try {
+        const memRes = await pool.request().query(`
+          SELECT total_physical_memory_kb / 1024 AS total_phys_mb,
+                 available_physical_memory_kb / 1024 AS available_phys_mb
+          FROM sys.dm_os_sys_memory
+        `);
+        const m = memRes.recordset[0];
+        if (m) {
+          totalPhysMb = m.total_phys_mb ?? 0;
+          availablePhysMb = m.available_phys_mb ?? 0;
+          if (totalPhysMb > 0) memoryPercent = Math.round(((totalPhysMb - availablePhysMb) / totalPhysMb) * 10000) / 100;
+        }
+      } catch { /* */ }
+      try {
+        const sqlMemRes = await pool.request().query(`SELECT physical_memory_in_use_kb / 1024 AS sql_mem_mb FROM sys.dm_os_process_memory`);
+        sqlMemoryMb = sqlMemRes.recordset[0]?.sql_mem_mb ?? 0;
+      } catch { /* */ }
+    }
 
-    const waitStats = await pool.request().query(`
-      SELECT TOP 5
-        wait_type,
-        waiting_tasks_count,
-        wait_time_ms
-      FROM sys.dm_os_wait_stats
-      WHERE waiting_tasks_count > 0
-        AND wait_type NOT LIKE '%SLEEP%'
-        AND wait_type NOT LIKE '%IDLE%'
-        AND wait_type NOT LIKE '%QUEUE%'
-        AND wait_type NOT LIKE 'BROKER%'
-        AND wait_type NOT LIKE 'XE%'
-        AND wait_type NOT LIKE 'WAITFOR'
-      ORDER BY wait_time_ms DESC
-    `);
+    // Storage stats (works on all editions)
+    let usedMb = 0;
+    let allocatedMb = 0;
+    try {
+      const sizeStats = await pool.request().query(`
+        SELECT SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8 / 1024) AS used_mb,
+               SUM(size * 8 / 1024) AS allocated_mb
+        FROM sys.database_files WHERE type_desc = 'ROWS'
+      `);
+      const s = sizeStats.recordset[0] || {};
+      usedMb = s.used_mb ?? 0;
+      allocatedMb = s.allocated_mb ?? 0;
+    } catch { /* */ }
+    const storagePercent = allocatedMb > 0 ? Math.round((usedMb / allocatedMb) * 10000) / 100 : 0;
 
-    const resource = resourceStats.recordset[0] || {};
-    const size = sizeStats.recordset[0] || {};
-    const conns = connStats.recordset[0] || {};
-    const sessions = sessionStats.recordset[0] || {};
+    // Connection stats (works on all editions)
+    let activeConnections = 0;
+    let totalSessions = 0;
+    try {
+      const connRes = await pool.request().query(`SELECT COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1 AND status = 'running'`);
+      activeConnections = connRes.recordset[0]?.cnt ?? 0;
+      const sessRes = await pool.request().query(`SELECT COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1`);
+      totalSessions = sessRes.recordset[0]?.cnt ?? 0;
+    } catch { /* */ }
 
-    const cpuPercent = resource.avg_cpu_percent ?? 0;
-    const memoryPercent = resource.avg_memory_usage_percent ?? 0;
-    const storagePercent =
-      size.allocated_mb > 0
-        ? Math.round((size.used_mb / size.allocated_mb) * 100 * 100) / 100
-        : 0;
+    // Top waits (works on all editions)
+    let topWaits: Record<string, unknown>[] = [];
+    try {
+      const waitRes = await pool.request().query(`
+        SELECT TOP 10 wait_type, waiting_tasks_count, wait_time_ms, signal_wait_time_ms
+        FROM sys.dm_os_wait_stats
+        WHERE waiting_tasks_count > 0
+          AND wait_type NOT LIKE '%SLEEP%' AND wait_type NOT LIKE '%IDLE%'
+          AND wait_type NOT LIKE '%QUEUE%' AND wait_type NOT LIKE 'BROKER%'
+          AND wait_type NOT LIKE 'XE%' AND wait_type NOT LIKE 'WAITFOR'
+        ORDER BY wait_time_ms DESC
+      `);
+      topWaits = waitRes.recordset || [];
+    } catch { /* */ }
+
+    // On-prem extras: databases, performance counters, tables
+    let databases: Record<string, unknown>[] = [];
+    let topTables: Record<string, unknown>[] = [];
+    const perfCounters: Record<string, number> = {};
+    let connectionsByDb: Record<string, unknown>[] = [];
+    let connectionsByLogin: Record<string, unknown>[] = [];
+    let serverVersion = "";
+    let sqlUptimeHours = 0;
+
+    if (!isAzure) {
+      // Databases
+      try {
+        const dbRes = await pool.request().query(`
+          SELECT d.name, d.state_desc, d.recovery_model_desc, d.compatibility_level,
+            CAST(SUM(mf.size) * 8.0 / 1024 AS DECIMAL(18,2)) AS size_mb,
+            CAST(SUM(CASE WHEN mf.type_desc = 'ROWS' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18,2)) AS data_mb,
+            CAST(SUM(CASE WHEN mf.type_desc = 'LOG' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18,2)) AS log_mb
+          FROM sys.databases d JOIN sys.master_files mf ON d.database_id = mf.database_id
+          GROUP BY d.name, d.state_desc, d.recovery_model_desc, d.compatibility_level
+          ORDER BY SUM(mf.size) DESC
+        `);
+        databases = dbRes.recordset || [];
+      } catch { /* */ }
+
+      // Top tables
+      try {
+        const tblRes = await pool.request().query(`
+          SELECT TOP 15 s.name + '.' + t.name AS table_name, SUM(p.rows) AS row_count,
+            CAST(SUM(a.total_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS total_mb,
+            CAST(SUM(a.used_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS used_mb,
+            CAST(SUM(a.data_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS data_mb,
+            COUNT(DISTINCT i.index_id) AS index_count
+          FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id
+          JOIN sys.indexes i ON t.object_id = i.object_id
+          JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+          JOIN sys.allocation_units a ON p.partition_id = a.container_id
+          WHERE t.is_ms_shipped = 0
+          GROUP BY s.name, t.name ORDER BY SUM(a.total_pages) DESC
+        `);
+        topTables = tblRes.recordset || [];
+      } catch { /* */ }
+
+      // Performance counters
+      try {
+        const pcRes = await pool.request().query(`
+          SELECT counter_name, cntr_value FROM sys.dm_os_performance_counters
+          WHERE object_name LIKE '%Buffer Manager%'
+            AND counter_name IN ('Page life expectancy','Buffer cache hit ratio','Buffer cache hit ratio base','Page reads/sec','Page writes/sec')
+        `);
+        const raw: Record<string, number> = {};
+        for (const r of pcRes.recordset) raw[r.counter_name.trim()] = r.cntr_value ?? 0;
+        perfCounters.page_life_expectancy = raw["Page life expectancy"] ?? 0;
+        const base = raw["Buffer cache hit ratio base"] || 1;
+        perfCounters.buffer_cache_hit_ratio = base ? Math.round((raw["Buffer cache hit ratio"] ?? 0) / base * 10000) / 100 : 0;
+        perfCounters.page_reads_sec = raw["Page reads/sec"] ?? 0;
+        perfCounters.page_writes_sec = raw["Page writes/sec"] ?? 0;
+      } catch { /* */ }
+      try {
+        const batchRes = await pool.request().query(`
+          SELECT counter_name, cntr_value FROM sys.dm_os_performance_counters
+          WHERE object_name LIKE '%SQL Statistics%' AND counter_name IN ('Batch Requests/sec','SQL Compilations/sec')
+        `);
+        for (const r of batchRes.recordset) {
+          const key = r.counter_name.trim().toLowerCase().replace("/sec", "_sec").replace(/ /g, "_");
+          perfCounters[key] = r.cntr_value ?? 0;
+        }
+      } catch { /* */ }
+
+      // Connections by db/login
+      try {
+        const cdbRes = await pool.request().query(`SELECT DB_NAME(database_id) AS db_name, COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1 AND database_id > 0 GROUP BY database_id ORDER BY COUNT(*) DESC`);
+        connectionsByDb = cdbRes.recordset || [];
+      } catch { /* */ }
+      try {
+        const clRes = await pool.request().query(`SELECT TOP 10 login_name, COUNT(*) AS cnt, SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS active FROM sys.dm_exec_sessions WHERE is_user_process = 1 GROUP BY login_name ORDER BY COUNT(*) DESC`);
+        connectionsByLogin = clRes.recordset || [];
+      } catch { /* */ }
+
+      // Version & uptime
+      try {
+        const verRes = await pool.request().query(`SELECT @@VERSION AS ver`);
+        const ver = verRes.recordset[0]?.ver ?? "";
+        serverVersion = ver.split("\n")[0].trim();
+      } catch { /* */ }
+      try {
+        const upRes = await pool.request().query(`SELECT DATEDIFF(HOUR, sqlserver_start_time, GETDATE()) AS uptime_hours FROM sys.dm_os_sys_info`);
+        sqlUptimeHours = upRes.recordset[0]?.uptime_hours ?? 0;
+      } catch { /* */ }
+    }
 
     // Fetch configurable rules
     const supabaseForRules = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "sql_query").single();
+    const checkType = isAzure ? "sql_query" : "sql_server";
+    const { data: ruleRow } = await supabaseForRules.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", checkType).single();
     const wr = (ruleRow?.warning_rules ?? { cpu_gt: 90, memory_gt: 90, storage_gt: 95 }) as Record<string, number>;
 
     let status: "online" | "offline" | "warning" = "online";
@@ -149,19 +290,29 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
       cpu_percent: Math.round(cpuPercent * 100) / 100,
       memory_percent: Math.round(memoryPercent * 100) / 100,
       storage_percent: storagePercent,
-      active_connections: conns.active_connections ?? 0,
+      active_connections: activeConnections,
       avg_response_time: 0,
       status,
       details: {
-        avg_data_io_percent: resource.avg_data_io_percent ?? 0,
-        avg_log_write_percent: resource.avg_log_write_percent ?? 0,
-        max_worker_percent: resource.max_worker_percent ?? 0,
-        max_session_percent: resource.max_session_percent ?? 0,
-        used_mb: size.used_mb ?? 0,
-        allocated_mb: size.allocated_mb ?? 0,
-        total_sessions: sessions.total_sessions ?? 0,
-        active_connections: conns.active_connections ?? 0,
-        top_waits: waitStats.recordset || [],
+        avg_data_io_percent: dataIoPercent,
+        avg_log_write_percent: logWritePercent,
+        max_worker_percent: maxWorkerPercent,
+        max_session_percent: maxSessionPercent,
+        used_mb: usedMb,
+        allocated_mb: allocatedMb,
+        total_sessions: totalSessions,
+        active_connections: activeConnections,
+        top_waits: topWaits,
+        databases,
+        top_tables: topTables,
+        connections_by_db: connectionsByDb,
+        connections_by_login: connectionsByLogin,
+        perf_counters: perfCounters,
+        server_version: serverVersion,
+        sql_uptime_hours: sqlUptimeHours,
+        total_phys_mb: totalPhysMb,
+        available_phys_mb: availablePhysMb,
+        sql_memory_mb: sqlMemoryMb,
       },
       error_message: null,
     };
