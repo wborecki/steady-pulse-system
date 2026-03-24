@@ -1198,19 +1198,6 @@ function SqlServerOnPremFields({ dbInputMode, setDbInputMode, initialConfig }: {
           )}
         </>
       )}
-      <div className="space-y-2 pt-2 border-t border-border">
-        <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — se preenchido, métricas avançadas são coletadas via agente; caso contrário, conexão direta)</Label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Agent URL</Label>
-            <Input name="agent_url" placeholder="http://192.168.1.100:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Agent Token</Label>
-            <Input name="agent_token" type="password" placeholder="Token do agente" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_token as string) || ''} />
-          </div>
-        </div>
-      </div>
       <p className="text-xs text-muted-foreground">Coleta: CPU, Memória, Conexões, Storage e Top Waits via DMVs. Porta padrão: 1433. Named instances: use campo Instância.</p>
     </div>
   );
