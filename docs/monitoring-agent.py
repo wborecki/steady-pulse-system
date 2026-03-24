@@ -656,7 +656,7 @@ def check_postgresql(config: dict) -> dict:
 
 
 def check_mssql(config: dict) -> dict:
-    """Connect to MSSQL/Azure SQL and collect resource metrics.
+    """Connect to MSSQL/Azure SQL and collect rich resource metrics.
 
     Requires pymssql: pip install pymssql
     """
@@ -670,7 +670,10 @@ def check_mssql(config: dict) -> dict:
     username = (config.get("username") or "").strip()
     password = (config.get("password") or "").strip()
     port = int(config.get("port", 1433))
+    instance = (config.get("instance") or "").strip()
     tls = config.get("encrypt", True)
+
+    server = f"{host}\\{instance}" if instance else host
 
     if not all([host, database, username, password]):
         return {"success": False, "error": "Missing required fields: host, database, username, password"}
@@ -678,7 +681,7 @@ def check_mssql(config: dict) -> dict:
     start = time.time()
     try:
         conn = pymssql.connect(
-            server=host,
+            server=server,
             user=username,
             password=password,
             database=database,
@@ -690,7 +693,9 @@ def check_mssql(config: dict) -> dict:
         )
         cursor = conn.cursor(as_dict=True)
 
-        # 1. Resource stats
+        # -----------------------------------------------------------
+        # 1. Resource stats (Azure SQL DMV — may fail on-prem)
+        # -----------------------------------------------------------
         cpu_percent = 0.0
         memory_percent = 0.0
         data_io_percent = 0.0
@@ -718,9 +723,67 @@ def check_mssql(config: dict) -> dict:
                 max_worker_percent = float(row.get("max_worker_percent", 0) or 0)
                 max_session_percent = float(row.get("max_session_percent", 0) or 0)
         except Exception:
-            pass  # DMV might not be available on all editions
+            pass  # DMV not available on all editions
 
-        # 2. Storage stats
+        # -----------------------------------------------------------
+        # 1b. On-prem CPU via sys.dm_os_ring_buffers (fallback)
+        # -----------------------------------------------------------
+        if cpu_percent == 0:
+            try:
+                cursor.execute("""
+                    SELECT TOP 1
+                        record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int') AS system_idle,
+                        record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS sql_cpu
+                    FROM (
+                        SELECT CAST(record AS XML) AS record
+                        FROM sys.dm_os_ring_buffers
+                        WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
+                            AND record LIKE N'%<SystemHealth>%'
+                    ) AS x
+                    ORDER BY record DESC
+                """)
+                row = cursor.fetchone()
+                if row and row.get("sql_cpu") is not None:
+                    cpu_percent = float(row["sql_cpu"])
+            except Exception:
+                pass
+
+        # -----------------------------------------------------------
+        # 1c. On-prem memory via sys.dm_os_sys_memory
+        # -----------------------------------------------------------
+        total_phys_mb = 0
+        available_phys_mb = 0
+        sql_memory_mb = 0
+        if memory_percent == 0:
+            try:
+                cursor.execute("""
+                    SELECT
+                        total_physical_memory_kb / 1024 AS total_phys_mb,
+                        available_physical_memory_kb / 1024 AS available_phys_mb
+                    FROM sys.dm_os_sys_memory
+                """)
+                row = cursor.fetchone()
+                if row:
+                    total_phys_mb = int(row.get("total_phys_mb", 0) or 0)
+                    available_phys_mb = int(row.get("available_phys_mb", 0) or 0)
+                    if total_phys_mb > 0:
+                        memory_percent = round(((total_phys_mb - available_phys_mb) / total_phys_mb) * 100, 2)
+            except Exception:
+                pass
+            try:
+                cursor.execute("""
+                    SELECT physical_memory_in_use_kb / 1024 AS sql_mem_mb
+                    FROM sys.dm_os_process_memory
+                """)
+                row = cursor.fetchone()
+                if row:
+                    sql_memory_mb = int(row.get("sql_mem_mb", 0) or 0)
+            except Exception:
+                pass
+
+        # -----------------------------------------------------------
+        # 2. Storage stats (current database)
+        # -----------------------------------------------------------
         used_mb = 0
         allocated_mb = 0
         storage_percent = 0.0
@@ -741,9 +804,70 @@ def check_mssql(config: dict) -> dict:
         except Exception:
             pass
 
-        # 3. Connection stats
+        # -----------------------------------------------------------
+        # 3. All databases sizes
+        # -----------------------------------------------------------
+        databases = []
+        try:
+            cursor.execute("""
+                SELECT
+                    d.name,
+                    d.state_desc,
+                    d.recovery_model_desc,
+                    d.compatibility_level,
+                    CAST(SUM(mf.size) * 8.0 / 1024 AS DECIMAL(18,2)) AS size_mb,
+                    CAST(SUM(CASE WHEN mf.type_desc = 'ROWS' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18,2)) AS data_mb,
+                    CAST(SUM(CASE WHEN mf.type_desc = 'LOG' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18,2)) AS log_mb
+                FROM sys.databases d
+                JOIN sys.master_files mf ON d.database_id = mf.database_id
+                GROUP BY d.name, d.state_desc, d.recovery_model_desc, d.compatibility_level
+                ORDER BY SUM(mf.size) DESC
+            """)
+            databases = [dict(r) for r in cursor.fetchall()]
+            for db in databases:
+                for k in ("size_mb", "data_mb", "log_mb"):
+                    db[k] = float(db.get(k, 0) or 0)
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 4. Top 15 tables by size (current database)
+        # -----------------------------------------------------------
+        top_tables = []
+        try:
+            cursor.execute("""
+                SELECT TOP 15
+                    s.name + '.' + t.name AS table_name,
+                    SUM(p.rows) AS row_count,
+                    CAST(SUM(a.total_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS total_mb,
+                    CAST(SUM(a.used_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS used_mb,
+                    CAST(SUM(a.data_pages) * 8.0 / 1024 AS DECIMAL(18,2)) AS data_mb,
+                    COUNT(DISTINCT i.index_id) AS index_count
+                FROM sys.tables t
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                JOIN sys.indexes i ON t.object_id = i.object_id
+                JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+                JOIN sys.allocation_units a ON p.partition_id = a.container_id
+                WHERE t.is_ms_shipped = 0
+                GROUP BY s.name, t.name
+                ORDER BY SUM(a.total_pages) DESC
+            """)
+            top_tables = [dict(r) for r in cursor.fetchall()]
+            for tbl in top_tables:
+                tbl["row_count"] = int(tbl.get("row_count", 0) or 0)
+                for k in ("total_mb", "used_mb", "data_mb"):
+                    tbl[k] = float(tbl.get(k, 0) or 0)
+                tbl["index_count"] = int(tbl.get("index_count", 0) or 0)
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 5. Connection details
+        # -----------------------------------------------------------
         active_connections = 0
         total_sessions = 0
+        connections_by_db = []
+        connections_by_login = []
         try:
             cursor.execute("SELECT COUNT(*) AS cnt FROM sys.dm_exec_sessions WHERE is_user_process = 1 AND status = 'running'")
             row = cursor.fetchone()
@@ -755,12 +879,79 @@ def check_mssql(config: dict) -> dict:
         except Exception:
             pass
 
-        # 4. Top waits
+        try:
+            cursor.execute("""
+                SELECT DB_NAME(database_id) AS db_name, COUNT(*) AS cnt
+                FROM sys.dm_exec_sessions
+                WHERE is_user_process = 1 AND database_id > 0
+                GROUP BY database_id
+                ORDER BY COUNT(*) DESC
+            """)
+            connections_by_db = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                SELECT TOP 10 login_name, COUNT(*) AS cnt,
+                    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS active
+                FROM sys.dm_exec_sessions
+                WHERE is_user_process = 1
+                GROUP BY login_name
+                ORDER BY COUNT(*) DESC
+            """)
+            connections_by_login = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 6. Performance counters (PLE, Buffer Cache Hit Ratio, etc.)
+        # -----------------------------------------------------------
+        perf_counters = {}
+        try:
+            cursor.execute("""
+                SELECT counter_name, cntr_value
+                FROM sys.dm_os_performance_counters
+                WHERE object_name LIKE '%Buffer Manager%'
+                    AND counter_name IN ('Page life expectancy', 'Buffer cache hit ratio', 'Buffer cache hit ratio base',
+                                         'Page reads/sec', 'Page writes/sec', 'Lazy writes/sec', 'Checkpoint pages/sec')
+            """)
+            raw = {}
+            for r in cursor.fetchall():
+                raw[r["counter_name"].strip()] = int(r.get("cntr_value", 0) or 0)
+            perf_counters["page_life_expectancy"] = raw.get("Page life expectancy", 0)
+            base = raw.get("Buffer cache hit ratio base", 1) or 1
+            perf_counters["buffer_cache_hit_ratio"] = round((raw.get("Buffer cache hit ratio", 0) / base) * 100, 2) if base else 0
+            perf_counters["page_reads_sec"] = raw.get("Page reads/sec", 0)
+            perf_counters["page_writes_sec"] = raw.get("Page writes/sec", 0)
+            perf_counters["lazy_writes_sec"] = raw.get("Lazy writes/sec", 0)
+            perf_counters["checkpoint_pages_sec"] = raw.get("Checkpoint pages/sec", 0)
+        except Exception:
+            pass
+
+        # Batch Requests/sec & Compilations/sec
+        try:
+            cursor.execute("""
+                SELECT counter_name, cntr_value
+                FROM sys.dm_os_performance_counters
+                WHERE object_name LIKE '%SQL Statistics%'
+                    AND counter_name IN ('Batch Requests/sec', 'SQL Compilations/sec', 'SQL Re-Compilations/sec')
+            """)
+            for r in cursor.fetchall():
+                key = r["counter_name"].strip().lower().replace("/sec", "_sec").replace(" ", "_").replace("-", "_")
+                perf_counters[key] = int(r.get("cntr_value", 0) or 0)
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 7. Top waits
+        # -----------------------------------------------------------
         top_waits = []
         try:
             cursor.execute("""
-                SELECT TOP 5
-                    wait_type, waiting_tasks_count, wait_time_ms
+                SELECT TOP 10
+                    wait_type, waiting_tasks_count, wait_time_ms,
+                    signal_wait_time_ms
                 FROM sys.dm_os_wait_stats
                 WHERE waiting_tasks_count > 0
                     AND wait_type NOT LIKE '%SLEEP%'
@@ -769,9 +960,90 @@ def check_mssql(config: dict) -> dict:
                     AND wait_type NOT LIKE 'BROKER%'
                     AND wait_type NOT LIKE 'XE%'
                     AND wait_type NOT LIKE 'WAITFOR'
+                    AND wait_type NOT IN ('CLR_SEMAPHORE','LAZYWRITER_SLEEP','RESOURCE_QUEUE',
+                        'SQLTRACE_BUFFER_FLUSH','WAIT_XTP_OFFLINE_CKPT_NEW_LOG','CHECKPOINT_QUEUE',
+                        'FT_IFTS_SCHEDULER_IDLE_WAIT','LOGMGR_QUEUE','ONDEMAND_TASK_QUEUE',
+                        'PREEMPTIVE_OS_AUTHENTICATIONOPS','PREEMPTIVE_OS_GETPROCADDRESS',
+                        'SP_SERVER_DIAGNOSTICS_SLEEP','SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+                        'TRACEWRITE','HADR_WORK_QUEUE')
                 ORDER BY wait_time_ms DESC
             """)
             top_waits = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 8. SQL Server version & uptime
+        # -----------------------------------------------------------
+        server_version = ""
+        sql_uptime_hours = 0
+        try:
+            cursor.execute("SELECT @@VERSION AS ver")
+            row = cursor.fetchone()
+            if row:
+                ver = str(row.get("ver", ""))
+                server_version = ver.split("\n")[0].strip() if ver else ""
+        except Exception:
+            pass
+        try:
+            cursor.execute("SELECT DATEDIFF(HOUR, sqlserver_start_time, GETDATE()) AS uptime_hours FROM sys.dm_os_sys_info")
+            row = cursor.fetchone()
+            if row:
+                sql_uptime_hours = int(row.get("uptime_hours", 0) or 0)
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 9. Scheduler / CPU info
+        # -----------------------------------------------------------
+        scheduler_count = 0
+        pending_io = 0
+        try:
+            cursor.execute("""
+                SELECT
+                    COUNT(*) AS scheduler_count,
+                    SUM(pending_disk_io_count) AS pending_io
+                FROM sys.dm_os_schedulers
+                WHERE status = 'VISIBLE ONLINE'
+            """)
+            row = cursor.fetchone()
+            if row:
+                scheduler_count = int(row.get("scheduler_count", 0) or 0)
+                pending_io = int(row.get("pending_io", 0) or 0)
+        except Exception:
+            pass
+
+        # -----------------------------------------------------------
+        # 10. Active running queries
+        # -----------------------------------------------------------
+        active_queries = []
+        try:
+            cursor.execute("""
+                SELECT TOP 10
+                    s.session_id,
+                    s.login_name,
+                    DB_NAME(s.database_id) AS db_name,
+                    s.status,
+                    s.cpu_time,
+                    s.memory_usage * 8 AS memory_kb,
+                    s.reads,
+                    s.writes,
+                    r.wait_type,
+                    r.wait_time,
+                    SUBSTRING(t.text, (r.statement_start_offset/2)+1,
+                        CASE WHEN r.statement_end_offset = -1 THEN LEN(t.text)
+                        ELSE (r.statement_end_offset - r.statement_start_offset)/2 + 1 END
+                    ) AS current_query
+                FROM sys.dm_exec_sessions s
+                LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+                OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
+                WHERE s.is_user_process = 1 AND s.status = 'running' AND r.session_id IS NOT NULL
+                ORDER BY s.cpu_time DESC
+            """)
+            active_queries = [dict(r) for r in cursor.fetchall()]
+            for q in active_queries:
+                if q.get("current_query"):
+                    q["current_query"] = str(q["current_query"])[:200]
         except Exception:
             pass
 
@@ -804,6 +1076,19 @@ def check_mssql(config: dict) -> dict:
                     "total_sessions": total_sessions,
                     "active_connections": active_connections,
                     "top_waits": top_waits,
+                    "databases": databases,
+                    "top_tables": top_tables,
+                    "connections_by_db": connections_by_db,
+                    "connections_by_login": connections_by_login,
+                    "perf_counters": perf_counters,
+                    "server_version": server_version,
+                    "sql_uptime_hours": sql_uptime_hours,
+                    "scheduler_count": scheduler_count,
+                    "pending_io": pending_io,
+                    "active_queries": active_queries,
+                    "total_phys_mb": total_phys_mb,
+                    "available_phys_mb": available_phys_mb,
+                    "sql_memory_mb": sql_memory_mb,
                 },
             },
         }

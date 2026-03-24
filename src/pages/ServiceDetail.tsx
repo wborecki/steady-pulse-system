@@ -1195,6 +1195,352 @@ const ServiceDetail = () => {
         );
       })()}
 
+      {/* SQL Server On-Prem Details */}
+      {checkType === 'sql_server' && (() => {
+        const details = (config as any)?._sql_details;
+        if (!details) return null;
+        const perf = details.perf_counters || {};
+        const usedGb = ((details.used_mb ?? 0) / 1024).toFixed(2);
+        const allocatedGb = ((details.allocated_mb ?? 0) / 1024).toFixed(2);
+        const storagePercent = details.allocated_mb ? Math.round((details.used_mb / details.allocated_mb) * 100) : 0;
+        const freeGb = (((details.allocated_mb ?? 0) - (details.used_mb ?? 0)) / 1024).toFixed(2);
+
+        return (
+          <div className="space-y-4">
+            {/* Server Info */}
+            {details.server_version && (
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-4 flex flex-wrap gap-4 text-xs font-mono text-muted-foreground">
+                  <span className="text-foreground">{details.server_version}</span>
+                  {details.sql_uptime_hours > 0 && <span>Uptime: {details.sql_uptime_hours}h</span>}
+                  {details.scheduler_count > 0 && <span>Schedulers: {details.scheduler_count}</span>}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Performance Counters */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Page Life Expectancy', value: perf.page_life_expectancy ?? 0, unit: 's', color: (perf.page_life_expectancy ?? 0) < 300 ? 'text-red-400' : 'text-emerald-400', icon: '⏱️' },
+                { label: 'Buffer Cache Hit', value: perf.buffer_cache_hit_ratio ?? 0, unit: '%', color: (perf.buffer_cache_hit_ratio ?? 0) < 90 ? 'text-red-400' : 'text-emerald-400', icon: '🎯' },
+                { label: 'Batch Requests/s', value: perf.batch_requests_sec ?? 0, unit: '', color: 'text-sky-400', icon: '📦' },
+                { label: 'Pending I/O', value: details.pending_io ?? 0, unit: '', color: (details.pending_io ?? 0) > 10 ? 'text-amber-400' : 'text-emerald-400', icon: '💾' },
+              ].map(m => (
+                <Card key={m.label} className="glass-card border-border/50 hover:border-border transition-colors">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{m.label}</p>
+                      <span className="text-sm">{m.icon}</span>
+                    </div>
+                    <p className={`text-3xl font-heading font-bold ${m.color}`}>
+                      {typeof m.value === 'number' ? m.value.toLocaleString('pt-BR') : m.value}
+                      {m.unit && <span className="text-sm ml-0.5 text-muted-foreground">{m.unit}</span>}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Resource Utilization row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Data IO', value: details.avg_data_io_percent ?? 0 },
+                { label: 'Log Write', value: details.avg_log_write_percent ?? 0 },
+                { label: 'Page Reads/s', value: perf.page_reads_sec ?? 0, noBar: true },
+                { label: 'Page Writes/s', value: perf.page_writes_sec ?? 0, noBar: true },
+              ].map(m => {
+                const pctColor = m.value > 80 ? 'text-red-400' : m.value > 50 ? 'text-amber-400' : 'text-emerald-400';
+                return (
+                  <Card key={m.label} className="glass-card border-border/50">
+                    <CardContent className="p-4">
+                      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-1">{m.label}</p>
+                      <p className={`text-2xl font-heading font-bold ${(m as any).noBar ? 'text-sky-400' : pctColor}`}>
+                        {typeof m.value === 'number' ? m.value.toLocaleString('pt-BR') : m.value}
+                        {!(m as any).noBar && <span className="text-sm ml-0.5">%</span>}
+                      </p>
+                      {!(m as any).noBar && (
+                        <div className="mt-2 h-1.5 bg-secondary/60 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${m.value > 80 ? 'bg-red-500' : m.value > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(m.value, 100)}%` }} />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {/* Connections & Storage */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Network className="h-4 w-4 text-sky-400" />
+                    <h3 className="font-heading font-semibold text-sm">Conexões & Sessões</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="text-center">
+                      <p className="text-4xl font-heading font-bold text-sky-400">{details.active_connections ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">Conexões Ativas</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-4xl font-heading font-bold text-violet-400">{details.total_sessions ?? 0}</p>
+                      <p className="text-xs font-mono text-muted-foreground mt-1">Total Sessões</p>
+                    </div>
+                  </div>
+                  {/* Connections by login */}
+                  {details.connections_by_login?.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-border/40">
+                      <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">Por Login</p>
+                      {details.connections_by_login.map((c: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs font-mono py-1">
+                          <span className="text-foreground truncate">{c.login_name}</span>
+                          <span className="text-muted-foreground">{c.cnt} ({c.active ?? 0} ativas)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Connections by database */}
+                  {details.connections_by_db?.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/40">
+                      <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">Por Banco</p>
+                      {details.connections_by_db.map((c: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs font-mono py-1">
+                          <span className="text-foreground truncate">{c.db_name}</span>
+                          <span className="text-muted-foreground">{c.cnt}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <HardDrive className="h-4 w-4 text-amber-400" />
+                    <h3 className="font-heading font-semibold text-sm">Storage (DB Atual)</h3>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-amber-400">{usedGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Usado (GB)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-slate-300">{allocatedGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Alocado (GB)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-heading font-bold text-emerald-400">{freeGb}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1">Livre (GB)</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-muted-foreground">Utilização</span>
+                      <span className={storagePercent > 90 ? 'text-red-400' : storagePercent > 75 ? 'text-amber-400' : 'text-emerald-400'}>{storagePercent}%</span>
+                    </div>
+                    <div className="h-2.5 bg-secondary/60 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          storagePercent > 90 ? 'bg-gradient-to-r from-red-600 to-red-400' :
+                          storagePercent > 75 ? 'bg-gradient-to-r from-amber-600 to-amber-400' :
+                          'bg-gradient-to-r from-emerald-600 to-emerald-400'
+                        }`}
+                        style={{ width: `${storagePercent}%` }}
+                      />
+                    </div>
+                  </div>
+                  {/* Memory info */}
+                  {details.total_phys_mb > 0 && (
+                    <div className="mt-4 pt-3 border-t border-border/40">
+                      <p className="text-[10px] font-mono uppercase text-muted-foreground mb-2">Memória do Servidor</p>
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
+                        <div><p className="text-lg font-bold text-foreground">{(details.total_phys_mb / 1024).toFixed(1)}</p><p className="text-muted-foreground">Total GB</p></div>
+                        <div><p className="text-lg font-bold text-sky-400">{(details.sql_memory_mb / 1024).toFixed(1)}</p><p className="text-muted-foreground">SQL GB</p></div>
+                        <div><p className="text-lg font-bold text-emerald-400">{(details.available_phys_mb / 1024).toFixed(1)}</p><p className="text-muted-foreground">Livre GB</p></div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Databases */}
+            {details.databases?.length > 0 && (
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Server className="h-4 w-4 text-violet-400" />
+                    <h3 className="font-heading font-semibold text-sm">Bancos de Dados</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono min-w-[500px]">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
+                          <th className="pb-2 text-left">Banco</th>
+                          <th className="pb-2 text-right">Dados (MB)</th>
+                          <th className="pb-2 text-right">Log (MB)</th>
+                          <th className="pb-2 text-right">Total (MB)</th>
+                          <th className="pb-2 text-left pl-3">Recovery</th>
+                          <th className="pb-2 text-left">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.databases.map((db: any, i: number) => (
+                          <tr key={i} className="border-b border-border/30 hover:bg-secondary/20 transition-colors">
+                            <td className="py-2 text-foreground">{db.name}</td>
+                            <td className="py-2 text-right text-sky-400">{db.data_mb?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td className="py-2 text-right text-amber-400">{db.log_mb?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td className="py-2 text-right text-foreground font-semibold">{db.size_mb?.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td className="py-2 pl-3 text-xs text-muted-foreground">{db.recovery_model_desc}</td>
+                            <td className="py-2">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${db.state_desc === 'ONLINE' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {db.state_desc}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Top Tables */}
+            {details.top_tables?.length > 0 && (
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <HardDrive className="h-4 w-4 text-emerald-400" />
+                    <h3 className="font-heading font-semibold text-sm">Top 15 Tabelas por Tamanho</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono min-w-[580px]">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
+                          <th className="pb-2 text-left">Tabela</th>
+                          <th className="pb-2 text-right">Linhas</th>
+                          <th className="pb-2 text-right">Dados (MB)</th>
+                          <th className="pb-2 text-right">Total (MB)</th>
+                          <th className="pb-2 text-right">Índices</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.top_tables.map((tbl: any, i: number) => {
+                          const maxSize = Math.max(...details.top_tables.map((t: any) => t.total_mb || 0));
+                          const barW = maxSize > 0 ? (tbl.total_mb / maxSize) * 100 : 0;
+                          return (
+                            <tr key={i} className="border-b border-border/30 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2 text-foreground">
+                                <div>{tbl.table_name}</div>
+                                <div className="mt-1 h-1 bg-secondary/40 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full bg-emerald-500/50" style={{ width: `${barW}%` }} />
+                                </div>
+                              </td>
+                              <td className="py-2 text-right text-muted-foreground">{tbl.row_count?.toLocaleString('pt-BR')}</td>
+                              <td className="py-2 text-right text-sky-400">{tbl.data_mb?.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</td>
+                              <td className="py-2 text-right text-foreground font-semibold">{tbl.total_mb?.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</td>
+                              <td className="py-2 text-right text-muted-foreground">{tbl.index_count}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Top Waits */}
+            {details.top_waits?.length > 0 && (
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="h-4 w-4 text-orange-400" />
+                    <h3 className="font-heading font-semibold text-sm">Top Wait Stats</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono min-w-[500px]">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
+                          <th className="pb-2 text-left">Wait Type</th>
+                          <th className="pb-2 text-right">Tasks</th>
+                          <th className="pb-2 text-right">Tempo Total</th>
+                          <th className="pb-2 text-right">Signal Wait</th>
+                          <th className="pb-2 text-right">Média/Task</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.top_waits.map((w: any, i: number) => {
+                          const avgMs = w.waiting_tasks_count > 0 ? (w.wait_time_ms / w.waiting_tasks_count) : 0;
+                          const maxWait = Math.max(...details.top_waits.map((t: any) => t.wait_time_ms || 0));
+                          const barWidth = maxWait > 0 ? (w.wait_time_ms / maxWait) * 100 : 0;
+                          return (
+                            <tr key={i} className="border-b border-border/30 hover:bg-secondary/20 transition-colors">
+                              <td className="py-2.5 pr-4">
+                                <div className="text-xs text-foreground">{w.wait_type}</div>
+                                <div className="mt-1 h-1 bg-secondary/40 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full bg-orange-500/60" style={{ width: `${barWidth}%` }} />
+                                </div>
+                              </td>
+                              <td className="py-2.5 text-right text-xs text-muted-foreground">{w.waiting_tasks_count?.toLocaleString('pt-BR')}</td>
+                              <td className="py-2.5 text-right text-xs text-orange-400">{(w.wait_time_ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}s</td>
+                              <td className="py-2.5 text-right text-xs text-amber-400">{((w.signal_wait_time_ms ?? 0) / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}s</td>
+                              <td className="py-2.5 text-right text-xs text-muted-foreground">{avgMs.toFixed(1)}ms</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Active Queries */}
+            {details.active_queries?.length > 0 && (
+              <Card className="glass-card border-border/50">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Activity className="h-4 w-4 text-sky-400" />
+                    <h3 className="font-heading font-semibold text-sm">Queries em Execução</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono min-w-[600px]">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground text-[11px] uppercase tracking-wider">
+                          <th className="pb-2 text-left">SPID</th>
+                          <th className="pb-2 text-left">Login</th>
+                          <th className="pb-2 text-left">DB</th>
+                          <th className="pb-2 text-right">CPU (ms)</th>
+                          <th className="pb-2 text-right">Reads</th>
+                          <th className="pb-2 text-left pl-3">Wait</th>
+                          <th className="pb-2 text-left">Query</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {details.active_queries.map((q: any, i: number) => (
+                          <tr key={i} className="border-b border-border/30 hover:bg-secondary/20 transition-colors">
+                            <td className="py-2 text-foreground">{q.session_id}</td>
+                            <td className="py-2 text-muted-foreground text-xs truncate max-w-[100px]">{q.login_name}</td>
+                            <td className="py-2 text-muted-foreground text-xs">{q.db_name}</td>
+                            <td className="py-2 text-right text-sky-400">{q.cpu_time?.toLocaleString('pt-BR')}</td>
+                            <td className="py-2 text-right text-muted-foreground">{q.reads?.toLocaleString('pt-BR')}</td>
+                            <td className="py-2 pl-3 text-xs text-amber-400">{q.wait_type || '-'}</td>
+                            <td className="py-2 text-xs text-muted-foreground truncate max-w-[200px]" title={q.current_query}>{q.current_query || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+      })()}
+
       {/* PostgreSQL Details */}
       {(checkType === 'postgresql' || checkType === 'supabase') && (() => {
         const details = (config as any)?._pg_details;
