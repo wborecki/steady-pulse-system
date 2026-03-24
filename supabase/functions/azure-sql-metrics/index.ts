@@ -43,9 +43,10 @@ async function resolveCredentials(config: Record<string, unknown>): Promise<Reco
   return { ...credConfig, ...config };
 }
 
-async function collectMetrics(config: Record<string, unknown>): Promise<MetricsResult> {
+async function collectMetrics(config: Record<string, unknown>, checkType = "sql_query"): Promise<MetricsResult> {
   // Resolve credentials from credentials table if credential_id is present
   const resolvedConfig = await resolveCredentials(config);
+  const isOnPrem = checkType === "sql_server";
 
   // Read from check_config first, fall back to env vars for backward compatibility
   const host = ((resolvedConfig.host as string) || Deno.env.get("AZURE_SQL_HOST") || "").trim();
@@ -81,27 +82,29 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
     let logWritePercent = 0;
     let maxWorkerPercent = 0;
     let maxSessionPercent = 0;
-    let isAzure = false;
+    let isAzure = !isOnPrem;
 
-    try {
-      const resourceStats = await pool.request().query(`
-        SELECT TOP 1
-          avg_cpu_percent, avg_data_io_percent, avg_log_write_percent,
-          avg_memory_usage_percent, max_worker_percent, max_session_percent
-        FROM sys.dm_db_resource_stats ORDER BY end_time DESC
-      `);
-      const r = resourceStats.recordset[0];
-      if (r) {
-        cpuPercent = r.avg_cpu_percent ?? 0;
-        memoryPercent = r.avg_memory_usage_percent ?? 0;
-        dataIoPercent = r.avg_data_io_percent ?? 0;
-        logWritePercent = r.avg_log_write_percent ?? 0;
-        maxWorkerPercent = r.max_worker_percent ?? 0;
-        maxSessionPercent = r.max_session_percent ?? 0;
-        isAzure = true;
+    if (!isOnPrem) {
+      try {
+        const resourceStats = await pool.request().query(`
+          SELECT TOP 1
+            avg_cpu_percent, avg_data_io_percent, avg_log_write_percent,
+            avg_memory_usage_percent, max_worker_percent, max_session_percent
+          FROM sys.dm_db_resource_stats ORDER BY end_time DESC
+        `);
+        const r = resourceStats.recordset[0];
+        if (r) {
+          cpuPercent = r.avg_cpu_percent ?? 0;
+          memoryPercent = r.avg_memory_usage_percent ?? 0;
+          dataIoPercent = r.avg_data_io_percent ?? 0;
+          logWritePercent = r.avg_log_write_percent ?? 0;
+          maxWorkerPercent = r.max_worker_percent ?? 0;
+          maxSessionPercent = r.max_session_percent ?? 0;
+        }
+      } catch (_e) {
+        // DMV not available — treat as on-prem
+        isAzure = false;
       }
-    } catch {
-      // Not Azure SQL — use on-prem DMVs
     }
 
     // On-prem CPU fallback via ring buffers
@@ -336,9 +339,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    let checkType = "sql_query";
     if (serviceId) {
-      const { data: svc } = await supabase.from("services").select("check_config").eq("id", serviceId).single();
+      const { data: svc } = await supabase.from("services").select("check_config, check_type").eq("id", serviceId).single();
       config = (svc?.check_config as Record<string, unknown>) || {};
+      checkType = (svc?.check_type as string) || "sql_query";
     }
 
     if (req.method === "POST") {
@@ -366,7 +371,7 @@ Deno.serve(async (req) => {
         username: ((resolvedConfig.username as string) || "").trim(),
         password: ((resolvedConfig.password as string) || "").trim(),
         port: resolvedConfig.port || 1433,
-        encrypt: resolvedConfig.encrypt ?? true,
+        encrypt: resolvedConfig.encrypt ?? (checkType !== "sql_server"),
       };
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -397,7 +402,7 @@ Deno.serve(async (req) => {
     } else {
       // Direct connection (original path)
       const start = Date.now();
-      metrics = await collectMetrics(config);
+      metrics = await collectMetrics(config, checkType);
       responseTime = Date.now() - start;
     }
 
