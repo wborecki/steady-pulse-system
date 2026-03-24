@@ -289,10 +289,22 @@ async function testAirflow(config: Record<string, unknown>): Promise<Response> {
 
   const start = Date.now();
   try {
-    const res = await fetch(`${baseUrl}/api/v1/health`, { headers });
-    const ms = Date.now() - start;
-    if (res.ok) return ok(`Airflow respondeu em ${ms}ms`, ms);
-    return fail(`Airflow retornou status ${res.status}`);
+    // Airflow 3.x removed /api/v1 — try v2 first, then fall back to v1
+    const healthPaths = ["/api/v2/monitor/health", "/api/v1/health"];
+    let lastStatus = 0;
+    for (const path of healthPaths) {
+      const res = await fetch(`${baseUrl}${path}`, { headers });
+      if (res.ok) {
+        const ms = Date.now() - start;
+        return ok(`Airflow respondeu em ${ms}ms`, ms);
+      }
+      lastStatus = res.status;
+      // If it's not 404/405/410, no point trying fallback
+      if (![404, 405, 410].includes(res.status)) {
+        return fail(`Airflow retornou status ${res.status}`);
+      }
+    }
+    return fail(`Airflow retornou status ${lastStatus}`);
   } catch (err) {
     return fail(`Airflow: ${(err as Error).message}`);
   }
