@@ -45,9 +45,7 @@ const Index = () => {
   }, [dashStats]);
 
   const criticalServices = useMemo(() => {
-    return services
-      .filter(s => s.status === 'offline' || s.status === 'warning')
-      .sort((a, b) => (a.status === 'offline' ? -1 : 1));
+    return services.filter(s => s.status === 'offline');
   }, [services]);
 
   const incidentsByCategory = useMemo(() => {
