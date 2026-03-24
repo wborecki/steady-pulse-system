@@ -62,9 +62,10 @@ async function collectMetrics(config: Record<string, unknown>): Promise<MetricsR
     database,
     user,
     password,
+    port: Number(resolvedConfig.port || 1433),
     options: {
-      encrypt: true,
-      trustServerCertificate: (config.trust_server_certificate as boolean) ?? false,
+      encrypt: (resolvedConfig.encrypt as boolean) ?? true,
+      trustServerCertificate: (resolvedConfig.trust_server_certificate as boolean) ?? !(resolvedConfig.encrypt ?? true),
     },
     connectionTimeout: 15000,
     requestTimeout: 15000,

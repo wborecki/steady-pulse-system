@@ -379,15 +379,8 @@ Deno.serve(async (req) => {
                 error_message: `SQL agent error: ${sqlErr.message}`,
               };
             }
-          } else if (service.check_type === "sql_server") {
-            // On-prem SQL Server requires agent relay
-            checkResult = {
-              status: "warning",
-              response_time: 0,
-              error_message: "Agent URL não configurado — edite o serviço e preencha o campo Agent URL",
-            };
           } else {
-            // Fallback to edge function delegation (direct mssql)
+            // Fallback to edge function delegation (direct mssql) — works for both Azure SQL and on-prem
             const result = await delegateToFunction("azure-sql-metrics");
             if (result === null) return;
             checkResult = result;

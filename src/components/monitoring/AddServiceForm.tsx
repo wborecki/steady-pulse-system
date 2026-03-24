@@ -1199,11 +1199,11 @@ function SqlServerOnPremFields({ dbInputMode, setDbInputMode, initialConfig }: {
         </>
       )}
       <div className="space-y-2 pt-2 border-t border-border">
-        <Label className="text-xs text-muted-foreground">Relay via Agente (obrigatório — o agente faz a ponte entre o Supabase e seu SQL Server on-premises)</Label>
+        <Label className="text-xs text-muted-foreground">Relay via Agente (opcional — se preenchido, métricas avançadas são coletadas via agente; caso contrário, conexão direta)</Label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Agent URL <span className="text-red-400">*</span></Label>
-            <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
+            <Label className="text-xs">Agent URL</Label>
+            <Input name="agent_url" placeholder="http://192.168.1.100:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Agent Token</Label>
