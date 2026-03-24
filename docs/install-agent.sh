@@ -33,7 +33,7 @@ CHECK_DOCKER=true
 UNINSTALL=false
 INSTALL_DIR="/opt/monitoring-agent"
 SERVICE_NAME="monitoring-agent"
-AGENT_URL="${AGENT_URL:-https://raw.githubusercontent.com/Solutions-in-BI/steady-pulse-system/main/docs/monitoring-agent.py}"
+AGENT_URL="${AGENT_URL:-https://raw.githubusercontent.com/wborecki/steady-pulse-system/main/docs/monitoring-agent.py}"
 
 log()   { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
