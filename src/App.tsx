@@ -75,7 +75,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter basename="/steady-pulse-system">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
