@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 
-export type CredentialType = 'aws' | 'agent' | 'airflow' | 'postgresql' | 'mongodb' | 'azure_sql' | 'ssh' | 'http_auth' | 'supabase';
+export type CredentialType = 'aws' | 'agent' | 'airflow' | 'postgresql' | 'mongodb' | 'azure_sql' | 'sql_server' | 'ssh' | 'http_auth' | 'supabase';
 
 export interface Credential {
   id: string;
@@ -28,6 +28,7 @@ export const credentialTypeLabels: Record<CredentialType, string> = {
   postgresql: 'PostgreSQL',
   mongodb: 'MongoDB',
   azure_sql: 'Azure SQL',
+  sql_server: 'SQL Server',
   ssh: 'SSH',
   http_auth: 'HTTP Auth',
   supabase: 'Supabase',
@@ -41,6 +42,7 @@ export const credentialCheckTypeMap: Record<CredentialType, string[]> = {
   postgresql: ['postgresql'],
   mongodb: ['mongodb'],
   azure_sql: ['sql_query'],
+  sql_server: ['sql_server'],
   ssh: ['tcp', 'process'],
   http_auth: ['http'],
   supabase: ['supabase'],
@@ -87,6 +89,15 @@ export const credentialFields: Record<CredentialType, { key: string; label: stri
     { key: 'host', label: 'Servidor', placeholder: 'server.database.windows.net' },
     { key: 'database', label: 'Database' },
     { key: 'username', label: 'Usuário' },
+    { key: 'password', label: 'Senha', type: 'password' },
+  ],
+  sql_server: [
+    { key: 'connection_string', label: 'Connection String', placeholder: 'Server=192.168.1.100,1433;Database=db;User Id=sa;Password=...' },
+    { key: 'host', label: 'Host / IP', placeholder: '192.168.1.100' },
+    { key: 'port', label: 'Porta', placeholder: '1433' },
+    { key: 'instance', label: 'Instância (opcional)', placeholder: 'SQLEXPRESS' },
+    { key: 'database', label: 'Database' },
+    { key: 'username', label: 'Usuário', placeholder: 'sa' },
     { key: 'password', label: 'Senha', type: 'password' },
   ],
   ssh: [

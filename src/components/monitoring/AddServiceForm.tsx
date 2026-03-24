@@ -21,7 +21,7 @@ const categoryLabels: Record<string, string> = {
 
 const categoryCheckTypes: Record<string, string[]> = {
   aws: ['cloudwatch', 's3', 'lambda', 'ecs', 'cloudwatch_alarms'],
-  database: ['sql_query', 'postgresql', 'mongodb', 'supabase'],
+  database: ['sql_query', 'sql_server', 'postgresql', 'mongodb', 'supabase'],
   airflow: ['airflow'],
   server: ['server', 'systemctl', 'tcp', 'process'],
   process: ['process'],
@@ -34,6 +34,7 @@ const checkTypeLabels: Record<string, string> = {
   http: 'HTTP / Site',
   tcp: 'TCP',
   sql_query: 'SQL Server (Azure)',
+  sql_server: 'SQL Server',
   postgresql: 'PostgreSQL',
   supabase: 'Supabase (PostgreSQL)',
   mongodb: 'MongoDB',
@@ -171,6 +172,30 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
         if (agentToken) checkConfig.agent_token = agentToken;
         const sqlCredId = (form.get('credential_id') as string || '').trim();
         if (sqlCredId) checkConfig.credential_id = sqlCredId;
+        break;
+      }
+      case 'sql_server': {
+        if (dbInputMode === 'connection_string') {
+          checkConfig = { connection_string: form.get('mssql_connection_string') as string };
+        } else {
+          const rawInstance = (form.get('db_instance') as string || '').trim();
+          checkConfig = {
+            host: form.get('db_host') as string,
+            port: Number(form.get('db_port') || 1433),
+            ...(rawInstance ? { instance: rawInstance } : {}),
+            database: form.get('db_name') as string,
+            username: form.get('db_username') as string,
+            password: form.get('db_password') as string,
+            trust_server_certificate: (form.get('db_trust_cert') as string) === 'on',
+            encrypt: false,
+          };
+        }
+        const sqlsrvAgentUrl = (form.get('agent_url') as string || '').trim();
+        const sqlsrvAgentToken = (form.get('agent_token') as string || '').trim();
+        if (sqlsrvAgentUrl) checkConfig.agent_url = sqlsrvAgentUrl;
+        if (sqlsrvAgentToken) checkConfig.agent_token = sqlsrvAgentToken;
+        const sqlsrvCredId = (form.get('credential_id') as string || '').trim();
+        if (sqlsrvCredId) checkConfig.credential_id = sqlsrvCredId;
         break;
       }
       case 'postgresql':
@@ -385,6 +410,9 @@ export function AddServiceForm({ onSuccess, initialData, mode = 'create' }: Prop
 
       {/* SQL Server fields */}
       {checkType === 'sql_query' && <SqlServerFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} initialConfig={initialData?.check_config} />}
+
+      {/* SQL Server on-premises fields */}
+      {checkType === 'sql_server' && <SqlServerOnPremFields dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} initialConfig={initialData?.check_config} />}
 
       {/* Airflow fields */}
       {checkType === 'airflow' && <AirflowFields initialConfig={initialData?.check_config} />}
@@ -1060,6 +1088,130 @@ function SqlServerFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInp
         </>
       )}
       <p className="text-xs text-muted-foreground">Coleta: CPU, Memória, Conexões, Storage e Top Waits via DMVs.</p>
+    </div>
+  );
+}
+
+function SqlServerOnPremFields({ dbInputMode, setDbInputMode, initialConfig }: { dbInputMode: string; setDbInputMode: (v: 'connection_string' | 'fields') => void; initialConfig?: Record<string, unknown> }) {
+  const [mssqlConnStr, setMssqlConnStr] = useState((initialConfig?.connection_string as string) || '');
+  const [mssqlHost, setMssqlHost] = useState((initialConfig?.host as string) || '');
+  const [mssqlPort, setMssqlPort] = useState(String(initialConfig?.port || '1433'));
+  const [mssqlInstance, setMssqlInstance] = useState((initialConfig?.instance as string) || '');
+  const [mssqlDb, setMssqlDb] = useState((initialConfig?.database as string) || '');
+  const [mssqlUser, setMssqlUser] = useState((initialConfig?.username as string) || '');
+  const [mssqlPass, setMssqlPass] = useState((initialConfig?.password as string) || '');
+  const [credentialId, setCredentialId] = useState((initialConfig?.credential_id as string) || '');
+  const [credentialSelected, setCredentialSelected] = useState(!!initialConfig?.credential_id);
+
+  const handleCredential = (cred: Credential | null) => {
+    if (cred) {
+      const c = cred.config as Record<string, string>;
+      if (c.connection_string) {
+        setDbInputMode('connection_string');
+        setMssqlConnStr(c.connection_string);
+      } else {
+        setDbInputMode('fields');
+        setMssqlHost(c.host || '');
+        setMssqlPort(c.port || '1433');
+        setMssqlInstance(c.instance || '');
+        setMssqlDb(c.database || '');
+        setMssqlUser(c.username || '');
+        setMssqlPass(c.password || '');
+      }
+      setCredentialId(cred.id);
+      setCredentialSelected(true);
+    } else {
+      setCredentialId('');
+      setCredentialSelected(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <CredentialSelector checkType="sql_server" onSelect={handleCredential} initialCredentialId={credentialId} />
+      <input type="hidden" name="credential_id" value={credentialId} />
+      {credentialSelected ? (
+        <>
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <p className="text-xs text-foreground">
+              🔗 <strong>Usando credencial salva</strong> — Dados de conexão herdados automaticamente.
+            </p>
+          </div>
+          {dbInputMode === 'connection_string' ? (
+            <input type="hidden" name="mssql_connection_string" value={mssqlConnStr} />
+          ) : (
+            <>
+              <input type="hidden" name="db_host" value={mssqlHost} />
+              <input type="hidden" name="db_port" value={mssqlPort} />
+              <input type="hidden" name="db_instance" value={mssqlInstance} />
+              <input type="hidden" name="db_name" value={mssqlDb} />
+              <input type="hidden" name="db_username" value={mssqlUser} />
+              <input type="hidden" name="db_password" value={mssqlPass} />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <DbInputModeToggle dbInputMode={dbInputMode} setDbInputMode={setDbInputMode} />
+          {dbInputMode === 'connection_string' ? (
+            <div className="space-y-2">
+              <Label>Connection String</Label>
+              <Input name="mssql_connection_string" required placeholder="Server=192.168.1.100,1433;Database=db;User Id=sa;Password=pass;" className="bg-secondary border-border font-mono text-xs" value={mssqlConnStr} onChange={e => setMssqlConnStr(e.target.value)} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label>Host / IP</Label>
+                  <Input name="db_host" required placeholder="192.168.1.100" className="bg-secondary border-border" value={mssqlHost} onChange={e => setMssqlHost(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Porta</Label>
+                  <Input name="db_port" type="number" placeholder="1433" className="bg-secondary border-border" value={mssqlPort} onChange={e => setMssqlPort(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Instância (opcional)</Label>
+                  <Input name="db_instance" placeholder="SQLEXPRESS" className="bg-secondary border-border" value={mssqlInstance} onChange={e => setMssqlInstance(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Database</Label>
+                  <Input name="db_name" required placeholder="meu_banco" className="bg-secondary border-border" value={mssqlDb} onChange={e => setMssqlDb(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Usuário</Label>
+                  <Input name="db_username" required placeholder="sa" className="bg-secondary border-border" value={mssqlUser} onChange={e => setMssqlUser(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Senha</Label>
+                  <Input name="db_password" type="password" required className="bg-secondary border-border" value={mssqlPass} onChange={e => setMssqlPass(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" name="db_trust_cert" id="db_trust_cert_onprem" className="rounded border-border" defaultChecked={!!initialConfig?.trust_server_certificate} />
+                <Label htmlFor="db_trust_cert_onprem" className="text-xs">Trust Server Certificate</Label>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      <div className="space-y-2 pt-2 border-t border-border">
+        <Label className="text-xs text-muted-foreground">Relay via Agente (obrigatório — o agente faz a ponte entre o Supabase e seu SQL Server on-premises)</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Agent URL <span className="text-red-400">*</span></Label>
+            <Input name="agent_url" required placeholder="http://192.168.1.100:9100" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_url as string) || ''} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Agent Token</Label>
+            <Input name="agent_token" type="password" placeholder="Token do agente" className="bg-secondary border-border text-xs" defaultValue={(initialConfig?.agent_token as string) || ''} />
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">Coleta: CPU, Memória, Conexões, Storage e Top Waits via DMVs. Porta padrão: 1433. Named instances: use campo Instância.</p>
     </div>
   );
 }

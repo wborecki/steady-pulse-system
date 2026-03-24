@@ -24,6 +24,7 @@ const metricsByCheckType: Record<string, string[]> = {
   tcp:               ['response_time'],
   process:           ['response_time'],
   sql_query:         ['cpu', 'memory', 'disk', 'response_time'],
+  sql_server:        ['cpu', 'memory', 'disk', 'response_time'],
   postgresql:        ['cpu', 'memory', 'response_time'],
   mongodb:           ['cpu', 'memory', 'disk', 'response_time'],
   cloudwatch:        ['cpu', 'memory', 'disk', 'response_time'],
@@ -45,6 +46,7 @@ const metricLabelOverrides: Record<string, Record<string, string>> = {
   ecs:        { cpu: 'CPU %', memory: 'Memória %' },
   cloudwatch_alarms: {},
   sql_query:  { disk: 'Storage %' },
+  sql_server: { disk: 'Storage %' },
 };
 
 const operatorOptions = [

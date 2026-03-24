@@ -331,7 +331,7 @@ const categoryLabels: Record<string, string> = {
 };
 
 const checkTypeLabels: Record<string, string> = {
-  http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL Query',
+  http: 'HTTP', tcp: 'TCP', process: 'Processo', sql_query: 'SQL Query', sql_server: 'SQL Server',
   postgresql: 'PostgreSQL', supabase: 'Supabase', mongodb: 'MongoDB', cloudwatch: 'CloudWatch', s3: 'S3', custom: 'Custom',
   lambda: 'Lambda', ecs: 'ECS', cloudwatch_alarms: 'CW Alarms', systemctl: 'Systemctl', container: 'Container',
   server: 'Servidor', airflow: 'Airflow',
@@ -348,7 +348,7 @@ function isHttpType(checkType: string) {
   return ['http'].includes(checkType);
 }
 function isDbType(checkType: string) {
-  return ['sql_query', 'postgresql', 'mongodb', 'supabase', 'supabase_project'].includes(checkType);
+  return ['sql_query', 'sql_server', 'postgresql', 'mongodb', 'supabase', 'supabase_project'].includes(checkType);
 }
 function isInfraType(checkType: string) {
   return ['tcp', 'process', 'cloudwatch'].includes(checkType);
@@ -367,6 +367,7 @@ const collectsMetric: Record<string, { cpu: boolean; memory: boolean; disk: bool
   process:           { cpu: false, memory: false, disk: false },
   s3:                { cpu: false, memory: false, disk: false },
   sql_query:         { cpu: true,  memory: true,  disk: true  },
+  sql_server:        { cpu: true,  memory: true,  disk: true  },
   postgresql:        { cpu: true,  memory: true,  disk: false },
   supabase:          { cpu: true,  memory: true,  disk: false },
   mongodb:           { cpu: true,  memory: true,  disk: true  },
@@ -616,6 +617,13 @@ const ServiceDetail = () => {
             <MetricCard label="Uptime" value={`${Number(service.uptime).toFixed(2)}`} unit="%" color="text-foreground" invertBar />
           </>
         ) : checkType === 'sql_query' ? (
+          <>
+            <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-emerald-400" />
+            <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-sky-400" />
+            <MetricCard label="Storage" value={Number(service.disk)} unit="%" color={Number(service.disk) > 90 ? 'text-red-400' : Number(service.disk) > 75 ? 'text-amber-400' : 'text-emerald-400'} />
+            <MetricCard label="Conexões Ativas" value={(config._sql_details as Record<string, unknown>)?.active_connections as number ?? 0} unit="" color="text-violet-400" />
+          </>
+        ) : checkType === 'sql_server' ? (
           <>
             <MetricCard label="CPU" value={Number(service.cpu)} unit="%" color="text-emerald-400" />
             <MetricCard label="Memória" value={Number(service.memory)} unit="%" color="text-sky-400" />

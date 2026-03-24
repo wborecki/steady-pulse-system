@@ -279,6 +279,7 @@ Deno.serve(async (req) => {
           }
           break;
         }
+        case "sql_server":
         case "sql_query": {
           // Handle agent relay inline to avoid cold-start issues with npm:mssql in azure-sql-metrics
           const sqlConfig = service.check_config || {};
@@ -310,7 +311,8 @@ Deno.serve(async (req) => {
                   username: ((resolvedSqlConfig.username as string) || "").trim(),
                   password: ((resolvedSqlConfig.password as string) || "").trim(),
                   port: resolvedSqlConfig.port || 1433,
-                  encrypt: resolvedSqlConfig.encrypt ?? true,
+                  instance: resolvedSqlConfig.instance || undefined,
+                  encrypt: resolvedSqlConfig.encrypt ?? (service.check_type === "sql_query"),
                 }),
               });
               const agentData = await agentRes.json();
@@ -318,8 +320,8 @@ Deno.serve(async (req) => {
 
               if (agentData.success && agentData.metrics) {
                 const m = agentData.metrics;
-                // Fetch status rules
-                const { data: sqlRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", "sql_query").single();
+                // Fetch status rules using the actual check_type
+                const { data: sqlRuleRow } = await supabase.from("check_type_status_rules").select("warning_rules, offline_rules").eq("check_type", service.check_type).single();
                 const wr = (sqlRuleRow?.warning_rules ?? { cpu_gt: 90, memory_gt: 90, storage_gt: 95 }) as Record<string, number>;
 
                 let sqlStatus: "online" | "warning" | "offline" = m.status || "online";
@@ -377,6 +379,13 @@ Deno.serve(async (req) => {
                 error_message: `SQL agent error: ${sqlErr.message}`,
               };
             }
+          } else if (service.check_type === "sql_server") {
+            // On-prem SQL Server requires agent relay
+            checkResult = {
+              status: "warning",
+              response_time: 0,
+              error_message: "Agent URL não configurado — edite o serviço e preencha o campo Agent URL",
+            };
           } else {
             // Fallback to edge function delegation (direct mssql)
             const result = await delegateToFunction("azure-sql-metrics");

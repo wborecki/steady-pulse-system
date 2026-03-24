@@ -400,7 +400,7 @@ Deno.serve(async (req) => {
     // For DB types, resolve agent for relay (explicit > auto-detect)
     let agentUrl = explicitAgentUrl || "";
     let agentToken = explicitAgentToken || "";
-    if (!agentUrl && (type === "postgresql" || type === "azure_sql")) {
+    if (!agentUrl && (type === "postgresql" || type === "azure_sql" || type === "sql_server")) {
       // Auto-detect: find an agent credential for the same user
       const adminClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -424,6 +424,7 @@ Deno.serve(async (req) => {
       case "postgresql":  return testPostgresql(config, agentUrl || undefined, agentToken || undefined);
       case "mongodb":     return testMongodb(config);
       case "azure_sql":   return testAzureSql(config, agentUrl || undefined, agentToken || undefined);
+      case "sql_server":  return testAzureSql(config, agentUrl || undefined, agentToken || undefined);
       case "aws":         return testAws(config);
       case "airflow":     return testAirflow(config);
       case "supabase":    return testSupabase(config);
